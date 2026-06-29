@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "prismlib"
-version = "0.4.0"
-description = "Tensor-native semantic cache and distributed data plane — PrismLib"
+name = "prismlib-plus"
+version = "0.5.0"
+description = "PrismLib + PrismAPI — tensor-native agent infrastructure with vector-native API layer"
 authors = [{ name = "InsightIts", email = "insightits.info@gmail.com" }]
 requires-python = ">=3.11"
 readme = "README.md"
