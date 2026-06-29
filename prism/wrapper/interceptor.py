@@ -112,6 +112,25 @@ class WALEvent:
             return self.before or {}
         return self.after or {}
 
+    @property
+    def row_id(self) -> str:
+        """
+        Stable row identifier for index upsert/delete.
+
+        Uses common primary-key column names when present; otherwise a
+        deterministic hash of table + row payload.
+        """
+        row = self.before if self.event_type == WALEventType.DELETE else (self.after or {})
+        for key in ("id", "row_id", "doc_id", "pk"):
+            if key in row and row[key] is not None:
+                return str(row[key])
+        payload = json.dumps(
+            {"table": self.table_name, "row": row},
+            sort_keys=True,
+            default=str,
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()[:32]
+
 
 # ---------------------------------------------------------------------------
 # Row vectorizer

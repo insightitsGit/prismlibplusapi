@@ -1,0 +1,9 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include RELEASE_NOTES.md
+include SECURITY.md
+include ENTERPRISE.md
+include RESULTS_AND_IMPROVEMENTS.md
+include BENCHMARK_RESULTS.md
+recursive-include proto *.proto

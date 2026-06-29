@@ -37,6 +37,7 @@ See prism/api/README.md for full documentation and benchmark numbers.
 
 from prism.api.provider import ASGIAdapter, ExposedHandler, PrismAPIProvider
 from prism.api.consumer import LangGraphTool, PrismAPIClient, RetryConfig
+from prism.api.auth import AuthConfig, AuthError, generate_api_key
 from prism.api.multi_provider import MultiProviderClient, MultiProviderResponse
 from prism.api.schema import (
     APIRequest,
@@ -75,4 +76,8 @@ __all__ = [
     "ExactSidecar",
     "APIRequest",
     "APIResponse",
+    # Auth
+    "AuthConfig",
+    "AuthError",
+    "generate_api_key",
 ]

@@ -41,6 +41,9 @@ from prism.wrapper.interceptor import (
     TiDBEventReceiver,
 )
 from prism.wrapper.publisher import CHORUSPublisher
+from prism.wrapper.row_events import RowEventHub
+from prism.wrapper.subscribe_server import SubscribeHTTPServer
+from prism.wrapper.grpc_server import WrapperGrpcServer
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,9 @@ class WrapperDaemon:
             maxsize=config.max_queue_size
         )
         self._publisher: Optional[CHORUSPublisher] = None
+        self._event_hub = RowEventHub(replay_buffer=self._cfg.max_queue_size)
+        self._subscribe_http: Optional[SubscribeHTTPServer] = None
+        self._grpc_server: Optional[WrapperGrpcServer] = None
         self._shutdown_event = asyncio.Event()
 
     # ------------------------------------------------------------------
@@ -74,22 +80,33 @@ class WrapperDaemon:
         logger.info("WrapperDaemon: starting (flavor=%s)", self._cfg.db_flavor)
 
         self._publisher = CHORUSPublisher(
-            tenant_id=self._cfg.db_dsn,  # use DSN as implicit tenant seed
+            tenant_id=self._cfg.tenant_id or self._cfg.db_dsn,
             target_dim=self._cfg.target_dim,
             key_ttl_seconds=self._cfg.key_ttl_seconds,
             publish_batch_size=self._cfg.publish_batch_size,
+            event_hub=self._event_hub,
         )
+
+        self._subscribe_http = SubscribeHTTPServer(
+            self._event_hub,
+            host=self._cfg.grpc_host,
+            port=self._cfg.subscribe_http_port,
+        )
+        self._subscribe_http.start()
 
         try:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(self._run_interceptor(), name="interceptor")
-                tg.create_task(
-                    self._publisher.run(self._queue), name="publisher"
-                )
+                tg.create_task(self._publisher.run(self._queue), name="publisher")
+                tg.create_task(self._run_grpc_server(), name="grpc-server")
                 tg.create_task(self._wait_shutdown(), name="shutdown-watcher")
         except* asyncio.CancelledError:
             pass
         finally:
+            if self._grpc_server:
+                await self._grpc_server.stop()
+            if self._subscribe_http:
+                self._subscribe_http.stop()
             if self._publisher:
                 await self._publisher.close()
             self._remove_pid_file()
@@ -141,14 +158,22 @@ class WrapperDaemon:
             raise ValueError(f"Unsupported database flavor: {flavor}")
 
     async def _enqueue(self, event: WALEvent) -> None:
-        try:
-            self._queue.put_nowait(event)
-        except asyncio.QueueFull:
-            logger.warning(
-                "WrapperDaemon: event queue full (size=%d) — dropping event for %s",
-                self._cfg.max_queue_size,
-                event.table_name,
-            )
+        await self._queue.put(event)
+
+    async def _run_grpc_server(self) -> None:
+        self._grpc_server = WrapperGrpcServer(
+            self._event_hub,
+            host=self._cfg.grpc_host,
+            port=self._cfg.grpc_port,
+            tls_cert_path=self._cfg.tls_cert_path,
+            tls_key_path=self._cfg.tls_key_path,
+            tls_ca_path=self._cfg.tls_ca_path,
+            require_client_cert=self._cfg.require_client_cert,
+            allow_insecure=self._cfg.allow_insecure,
+            target_dim=self._cfg.target_dim,
+        )
+        await self._grpc_server.start()
+        await self._grpc_server.wait()
 
     # ------------------------------------------------------------------
     # Shutdown

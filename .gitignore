@@ -36,6 +36,9 @@ benchmark/.env
 .idea/
 *.swp
 
+# TLS dev certs (generate with scripts/gen_dev_certs.py)
+certs/
+
 # Logs
 *.log
 logs/

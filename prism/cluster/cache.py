@@ -386,6 +386,20 @@ class ClusterCache:
         except Exception as exc:
             logger.warning("ClusterCache: failed to ingest frame: %s", exc)
 
+    def invalidate_cluster_entries(self, query_hashes: set[str] | list[str]) -> int:
+        """Remove cluster cache entries by query hash (e.g. after doc updates)."""
+        removed = 0
+        for qh in query_hashes:
+            if qh in self._cluster_entries:
+                del self._cluster_entries[qh]
+                removed += 1
+        return removed
+
+    def invalidate_all_cluster(self) -> int:
+        n = len(self._cluster_entries)
+        self._cluster_entries.clear()
+        return n
+
     def record_hot_chunk(self, chunk_hash: str, score: float) -> None:
         """Called when a METRIC frame with hot chunk data arrives."""
         self._compressor.record_hot_chunk(chunk_hash, score)

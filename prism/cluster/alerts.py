@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import operator
+import re
 import smtplib
 import ssl
 import time
@@ -62,20 +64,65 @@ class AlertRule:
         AlertRule("sub_errors",   "sub_errors > 10",    AlertLevel.CRITICAL)
     """
     name:       str
-    condition:  str          # Python expression evaluated against health/status dict
+    condition:  str          # Comparison expression, e.g. "cpu_pct > 90"
     level:      AlertLevel
     cooldown_s: float = 300  # don't re-fire same alert within this many seconds
     _last_fired: float = field(default=0.0, init=False, repr=False)
 
     def should_fire(self, context: dict) -> bool:
         try:
-            result = bool(eval(self.condition, {"__builtins__": {}}, context))  # noqa: S307
+            result = _evaluate_condition(self.condition, context)
         except Exception:
             return False
         if result and (time.time() - self._last_fired) > self.cooldown_s:
             self._last_fired = time.time()
             return True
         return False
+
+
+_OPS = {
+    ">": operator.gt,
+    "<": operator.lt,
+    ">=": operator.ge,
+    "<=": operator.le,
+    "==": operator.eq,
+    "!=": operator.ne,
+}
+
+_COND_RE = re.compile(
+    r"^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(>=|<=|==|!=|>|<)\s*(.+?)\s*$"
+)
+
+
+def _parse_literal(raw: str) -> bool | int | float:
+    s = raw.strip()
+    if s == "True":
+        return True
+    if s == "False":
+        return False
+    if s.startswith('"') and s.endswith('"'):
+        return s[1:-1]
+    if s.startswith("'") and s.endswith("'"):
+        return s[1:-1]
+    if "." in s:
+        return float(s)
+    return int(s)
+
+
+def _evaluate_condition(condition: str, context: dict) -> bool:
+    """Safe comparison evaluator — no arbitrary code execution."""
+    m = _COND_RE.match(condition)
+    if not m:
+        return False
+    key, op_sym, rhs_raw = m.groups()
+    if key not in context:
+        return False
+    left = context[key]
+    right = _parse_literal(rhs_raw)
+    op_fn = _OPS.get(op_sym)
+    if op_fn is None:
+        return False
+    return bool(op_fn(left, right))
 
 
 # Default rules applied to every node

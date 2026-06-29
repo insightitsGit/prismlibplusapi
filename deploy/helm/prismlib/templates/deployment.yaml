@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "prismlib.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "prismlib.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "prismlib.name" . }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "prismlib.name" . }}
+      {{- if .Values.monitoring.prometheusScrape }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: {{ .Values.monitoring.metricsPath | quote }}
+        prometheus.io/port: {{ .Values.service.httpPort | quote }}
+      {{- end }}
+    spec:
+      containers:
+        - name: prismlib
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "examples/enterprise_server.py", "--host", "0.0.0.0", "--port", "{{ .Values.service.httpPort }}"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.httpPort }}
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "prismlib.fullname" . }}-config
+          env:
+            {{- if or .Values.auth.createSecret .Values.auth.apiKeySecret }}
+            - name: PRISM_API_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.auth.apiKeySecret }}
+                  key: PRISM_API_KEYS
+            {{- end }}
+            {{- if .Values.tls.enabled }}
+            - name: PRISM_WRAPPER_TLS_CERT
+              value: /etc/prism/tls/tls.crt
+            - name: PRISM_WRAPPER_TLS_KEY
+              value: /etc/prism/tls/tls.key
+            {{- if .Values.tls.mountCa }}
+            - name: PRISM_WRAPPER_TLS_CA
+              value: /etc/prism/tls/ca.crt
+            - name: PRISM_DRIVER_TLS_CA
+              value: /etc/prism/tls/ca.crt
+            {{- end }}
+            {{- end }}
+          {{- if .Values.tls.enabled }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/prism/tls
+              readOnly: true
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.tls.enabled }}
+      volumes:
+        - name: tls
+          projected:
+            sources:
+              - secret:
+                  name: {{ .Values.tls.certSecret }}
+                  items:
+                    - key: tls.crt
+                      path: tls.crt
+                    - key: tls.key
+                      path: tls.key
+              {{- if .Values.tls.mountCa }}
+              - secret:
+                  name: {{ .Values.tls.caSecret }}
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              {{- end }}
+      {{- end }}

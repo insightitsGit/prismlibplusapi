@@ -10,6 +10,10 @@ from enum import Enum
 from typing import Optional
 
 
+def _env_bool(val: str) -> bool:
+    return val.lower() in ("1", "true", "yes")
+
+
 class DatabaseFlavor(str, Enum):
     POSTGRESQL  = "postgresql"
     MYSQL       = "mysql"
@@ -36,8 +40,13 @@ class WrapperConfig:
     # ── CHORUS Fabric gRPC server ────────────────────────────────────────
     grpc_host: str = "0.0.0.0"
     grpc_port: int = 50051
+    subscribe_http_port: int = 8081
+    tenant_id: str = ""
     tls_cert_path: Optional[str] = None
     tls_key_path: Optional[str] = None
+    tls_ca_path: Optional[str] = None
+    require_client_cert: bool = False
+    allow_insecure: bool = False
 
     # ── Vectorisation ────────────────────────────────────────────────────
     target_dim: int = 64            # JL projection output dimension
@@ -60,8 +69,13 @@ class WrapperConfig:
             "PRISM_WRAPPER_DB_SLOT":     ("db_slot_name", str),
             "PRISM_WRAPPER_GRPC_HOST":   ("grpc_host",   str),
             "PRISM_WRAPPER_GRPC_PORT":   ("grpc_port",   int),
+            "PRISM_WRAPPER_SUBSCRIBE_PORT": ("subscribe_http_port", int),
+            "PRISM_WRAPPER_TENANT_ID":   ("tenant_id",   str),
             "PRISM_WRAPPER_TLS_CERT":    ("tls_cert_path", str),
             "PRISM_WRAPPER_TLS_KEY":     ("tls_key_path",  str),
+            "PRISM_WRAPPER_TLS_CA":      ("tls_ca_path",   str),
+            "PRISM_WRAPPER_REQUIRE_CLIENT_CERT": ("require_client_cert", _env_bool),
+            "PRISM_WRAPPER_ALLOW_INSECURE": ("allow_insecure", _env_bool),
             "PRISM_WRAPPER_TARGET_DIM":  ("target_dim",  int),
             "PRISM_WRAPPER_LOG_LEVEL":   ("log_level",   str),
         }
@@ -99,6 +113,8 @@ class WrapperConfig:
         cfg.grpc_port      = grpc.get("port", cfg.grpc_port)
         cfg.tls_cert_path  = grpc.get("tls_cert", cfg.tls_cert_path)
         cfg.tls_key_path   = grpc.get("tls_key", cfg.tls_key_path)
+        cfg.tls_ca_path    = grpc.get("tls_ca", cfg.tls_ca_path)
+        cfg.require_client_cert = grpc.get("require_client_cert", cfg.require_client_cert)
         cfg.target_dim     = vec.get("target_dim", cfg.target_dim)
         cfg.key_ttl_seconds = vec.get("key_ttl_seconds", cfg.key_ttl_seconds)
         cfg.log_level      = ops.get("log_level", cfg.log_level)

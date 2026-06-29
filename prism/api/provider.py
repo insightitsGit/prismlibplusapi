@@ -405,10 +405,16 @@ class ASGIAdapter:
         handler: ExposedHandler,
         handler_name: str,
         route_prefix: str = "/chorus",
+        auth: Optional[Any] = None,
+        audit: Optional[Any] = None,
+        rate_limiter: Optional[Any] = None,
     ) -> None:
         self._handler = handler
         self._name = handler_name
         self._prefix = route_prefix.rstrip("/")
+        self._auth = auth
+        self._audit = audit
+        self._rate_limiter = rate_limiter
 
     def mount(self, app: Any) -> None:
         """
@@ -428,6 +434,30 @@ class ASGIAdapter:
         handler = self._handler  # capture for closure
 
         async def chorus_endpoint(request: Request) -> Response:
+            hdrs = dict(request.headers)
+            from prism.api.auth import AuthConfig, actor_from_headers
+
+            actor = actor_from_headers(hdrs)
+            path = f"{self._prefix}/{self._name}"
+
+            if self._rate_limiter is not None:
+                from prism.security.rate_limit import RateLimitExceeded
+                try:
+                    self._rate_limiter.check(actor)
+                except RateLimitExceeded:
+                    if self._audit is not None:
+                        self._audit.rate_limited(actor, resource=path)
+                    return Response(content=b"Rate limit exceeded", status_code=429)
+
+            if self._auth is not None:
+                cfg = self._auth if isinstance(self._auth, AuthConfig) else self._auth
+                if not cfg.validate_headers(hdrs):
+                    if self._audit is not None:
+                        self._audit.auth_denied(actor, resource=path, reason="invalid_credentials")
+                    return Response(content=b"Unauthorized", status_code=401)
+                if self._audit is not None:
+                    self._audit.auth_success(actor, resource=path)
+
             body = await request.body()
             try:
                 req_frame = CHORUSFrame.from_bytes(body)

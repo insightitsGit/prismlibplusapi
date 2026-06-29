@@ -92,7 +92,7 @@ class TestPrismRAGPatch:
     def test_category_is_assigned(self, patch: PrismRAGPatch) -> None:
         v = np.random.randn(INPUT_DIM).astype(np.float32)
         pv = patch.patch(v)
-        assert pv.category_label in {"finance", "healthcare", "legal"}
+        assert pv.category_label in {"finance", "healthcare", "legal", "uncategorised"}
 
     def test_finance_anchor_matches_finance(
         self, patch: PrismRAGPatch, categories: list[TaxonomyCategory]

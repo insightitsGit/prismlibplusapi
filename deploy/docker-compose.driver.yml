@@ -1,0 +1,50 @@
+version: "3.9"
+
+# Local 2-node PrismDriver e2e — wrapper-sim (DB) + benchmark app (driver)
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.driver.yml up --build
+#   python benchmark/load/run_driver_benchmark.py \
+#     --app-url http://localhost:8000 \
+#     --db-url  http://localhost:8001 \
+#     --users 10 --duration 30 --warmup-rows 500
+
+services:
+  wrapper-sim:
+    build:
+      context: ..
+      dockerfile: benchmark/Dockerfile.wrapper
+    container_name: prism-wrapper-sim
+    ports:
+      - "8001:8001"
+    environment:
+      PRISM_TENANT_ID: benchmark-db
+      PRISM_TARGET_DIM: "64"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+
+  benchmark-app:
+    build:
+      context: ..
+      dockerfile: benchmark/Dockerfile
+    container_name: prism-benchmark
+    ports:
+      - "8000:8000"
+    environment:
+      PRISM_WRAPPER_URL: http://wrapper-sim:8001
+      PRISM_WRAPPER_PORT: "8001"
+      PRISM_TENANT_ID: benchmark-app
+      PRISM_TARGET_DIM: "64"
+      PRISM_BENCHMARK_SMOKE: "1"
+    depends_on:
+      wrapper-sim:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 25s

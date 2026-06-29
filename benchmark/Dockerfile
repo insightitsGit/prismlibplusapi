@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml ./
 COPY benchmark/requirements.txt ./requirements-benchmark.txt
 
-RUN pip install --no-cache-dir -e ".[cache]" && \
+RUN pip install --no-cache-dir -e ".[fabric]" && \
     pip install --no-cache-dir -r requirements-benchmark.txt
 
 COPY prism/ ./prism/

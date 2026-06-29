@@ -24,7 +24,10 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,cache,fabric]"
+
+      - name: Verify protobuf stubs
+        run: python -c "from prism.wrapper.proto import chorus_pb2, chorus_pb2_grpc; print('proto ok')"
 
       - name: Run tests
         run: pytest --tb=short -q --cov=prism --cov-report=xml

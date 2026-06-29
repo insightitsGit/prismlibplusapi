@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prismlib-plus"
-version = "0.5.0"
-description = "PrismLib + PrismAPI — tensor-native agent infrastructure with vector-native API layer"
+version = "0.7.0"
+description = "PrismLib — semantic LLM cache, WAL-streamed vector driver, cluster mesh, and PrismAPI enterprise layer for AI agents"
 authors = [{ name = "InsightIts", email = "insightits.info@gmail.com" }]
 requires-python = ">=3.11"
 readme = "README.md"
@@ -105,6 +105,28 @@ dev = [
     "pytest-cov>=5.0.0",
     "mypy>=1.10.0",
     "ruff>=0.4.0",
+    "httpx>=0.27.0",
+]
+
+# Enterprise observability
+observability = [
+    "psutil>=5.9.0",
+    "httpx>=0.27.0",
+]
+
+# OpenTelemetry (optional)
+otel = [
+    "opentelemetry-api>=1.24.0",
+    "opentelemetry-sdk>=1.24.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.24.0",
+]
+
+# Enterprise bundle
+enterprise = [
+    "fastapi>=0.110.0",
+    "httpx>=0.27.0",
+    "psutil>=5.9.0",
+    "uvicorn[standard]>=0.29.0",
 ]
 
 [project.scripts]

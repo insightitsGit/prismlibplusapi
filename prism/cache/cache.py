@@ -326,84 +326,87 @@ class PrismCache:
         -------
         The LLM response — either from cache or freshly generated.
         """
-        t_start = time.monotonic()
+        from prism.observability.otel import trace_span
 
-        # Step 1: embed the query
-        raw_embedding = self._embedder.embed(query)
+        with trace_span("prism.cache.get_or_call", tenant_id=self._cfg.tenant_id):
+            t_start = time.monotonic()
 
-        # Step 2: project into tenant-isolated 64-d space
-        envelope = self._projector.project(raw_embedding)
-        query_vector = envelope.vector  # float32, shape (64,)
+            # Step 1: embed the query
+            raw_embedding = self._embedder.embed(query)
 
-        # Step 3: wave interference query — find similar entries
-        query_packet = WavePacket.from_real_vector(
-            query_vector,
-            phase_state=self._cfg.phase_state,
-        )
-        hits = self._resonance.query(
-            query_packet,
-            top_k=1,
-            amplitude_min=0.001,
-        )
+            # Step 2: project into tenant-isolated 64-d space
+            envelope = self._projector.project(raw_embedding)
+            query_vector = envelope.vector  # float32, shape (64,)
 
-        # Step 4: check if best hit clears the threshold
-        if hits and hits[0].constructive_score >= self._cfg.similarity_threshold:
-            best_hit = hits[0]
-            entry = self._store.load(best_hit.packet_id)
+            # Step 3: wave interference query — find similar entries
+            query_packet = WavePacket.from_real_vector(
+                query_vector,
+                phase_state=self._cfg.phase_state,
+            )
+            hits = self._resonance.query(
+                query_packet,
+                top_k=1,
+                amplitude_min=0.001,
+            )
 
-            if entry is not None:
-                # Cache hit
-                latency_ms = (time.monotonic() - t_start) * 1000
-                tokens = tokens_in_response or self._cfg.avg_tokens_per_response
-                cost_saved = self._cost_model.cost_for_tokens(tokens)
+            # Step 4: check if best hit clears the threshold
+            if hits and hits[0].constructive_score >= self._cfg.similarity_threshold:
+                best_hit = hits[0]
+                entry = self._store.load(best_hit.packet_id)
 
-                self._metrics.record(
-                    was_hit=True,
-                    latency_ms=latency_ms,
-                    tokens_saved=tokens,
-                    cost_saved_usd=cost_saved,
-                    similarity_score=best_hit.constructive_score,
-                    tenant_id=self._cfg.tenant_id,
-                )
+                if entry is not None:
+                    # Cache hit
+                    latency_ms = (time.monotonic() - t_start) * 1000
+                    tokens = tokens_in_response or self._cfg.avg_tokens_per_response
+                    cost_saved = self._cost_model.cost_for_tokens(tokens)
 
-                logger.debug(
-                    "PrismCache HIT  tenant=%s score=%.4f latency=%.2fms",
-                    self._cfg.tenant_id,
-                    best_hit.constructive_score,
-                    latency_ms,
-                )
-                return entry.response  # type: ignore[return-value]
+                    self._metrics.record(
+                        was_hit=True,
+                        latency_ms=latency_ms,
+                        tokens_saved=tokens,
+                        cost_saved_usd=cost_saved,
+                        similarity_score=best_hit.constructive_score,
+                        tenant_id=self._cfg.tenant_id,
+                    )
 
-        # Step 5: cache miss — call the LLM
-        t_llm_start = time.monotonic()
-        response = call_fn()
-        llm_latency_ms = (time.monotonic() - t_llm_start) * 1000
+                    logger.debug(
+                        "PrismCache HIT  tenant=%s score=%.4f latency=%.2fms",
+                        self._cfg.tenant_id,
+                        best_hit.constructive_score,
+                        latency_ms,
+                    )
+                    return entry.response  # type: ignore[return-value]
 
-        # Step 6: store the response
-        self._store_response(
-            packet_id=envelope.envelope_id,
-            query_vector=query_vector,
-            query_text=query,
-            response=response,
-            metadata=metadata,
-        )
+            # Step 5: cache miss — call the LLM
+            t_llm_start = time.monotonic()
+            response = call_fn()
+            llm_latency_ms = (time.monotonic() - t_llm_start) * 1000
 
-        total_latency_ms = (time.monotonic() - t_start) * 1000
-        self._metrics.record(
-            was_hit=False,
-            latency_ms=total_latency_ms,
-            tokens_saved=0,
-            cost_saved_usd=0.0,
-            similarity_score=hits[0].constructive_score if hits else 0.0,
-            tenant_id=self._cfg.tenant_id,
-        )
+            # Step 6: store the response
+            self._store_response(
+                packet_id=envelope.envelope_id,
+                query_vector=query_vector,
+                query_text=query,
+                response=response,
+                metadata=metadata,
+            )
 
-        logger.debug(
-            "PrismCache MISS tenant=%s llm_latency=%.0fms",
-            self._cfg.tenant_id,
-            llm_latency_ms,
-        )
-        return response  # type: ignore[return-value]
+            total_latency_ms = (time.monotonic() - t_start) * 1000
+            self._metrics.record(
+                was_hit=False,
+                latency_ms=total_latency_ms,
+                tokens_saved=0,
+                cost_saved_usd=0.0,
+                similarity_score=hits[0].constructive_score if hits else 0.0,
+                tenant_id=self._cfg.tenant_id,
+            )
+
+            logger.debug(
+                "PrismCache MISS tenant=%s llm_latency=%.0fms",
+                self._cfg.tenant_id,
+                llm_latency_ms,
+            )
+            return response  # type: ignore[return-value]
 
     # ------------------------------------------------------------------
     # Core API — async
@@ -432,57 +435,60 @@ class PrismCache:
                 call_fn=my_llm_call,
             )
         """
-        t_start = time.monotonic()
+        from prism.observability.otel import trace_span
 
-        raw_embedding = await asyncio.get_event_loop().run_in_executor(
-            None, self._embedder.embed, query
-        )
-        envelope = self._projector.project(raw_embedding)
-        query_vector = envelope.vector
+        with trace_span("prism.cache.aget_or_call", tenant_id=self._cfg.tenant_id):
+            t_start = time.monotonic()
 
-        query_packet = WavePacket.from_real_vector(
-            query_vector, phase_state=self._cfg.phase_state
-        )
-        hits = self._resonance.query(query_packet, top_k=1, amplitude_min=0.001)
+            raw_embedding = await asyncio.get_event_loop().run_in_executor(
+                None, self._embedder.embed, query
+            )
+            envelope = self._projector.project(raw_embedding)
+            query_vector = envelope.vector
 
-        if hits and hits[0].constructive_score >= self._cfg.similarity_threshold:
-            entry = self._store.load(hits[0].packet_id)
-            if entry is not None:
-                latency_ms = (time.monotonic() - t_start) * 1000
-                tokens = tokens_in_response or self._cfg.avg_tokens_per_response
-                self._metrics.record(
-                    was_hit=True,
-                    latency_ms=latency_ms,
-                    tokens_saved=tokens,
-                    cost_saved_usd=self._cost_model.cost_for_tokens(tokens),
-                    similarity_score=hits[0].constructive_score,
-                    tenant_id=self._cfg.tenant_id,
-                )
-                return entry.response
+            query_packet = WavePacket.from_real_vector(
+                query_vector, phase_state=self._cfg.phase_state
+            )
+            hits = self._resonance.query(query_packet, top_k=1, amplitude_min=0.001)
 
-        # Miss — call the (possibly async) LLM function
-        if asyncio.iscoroutinefunction(call_fn):
-            response = await call_fn()
-        else:
-            response = await asyncio.get_event_loop().run_in_executor(None, call_fn)
+            if hits and hits[0].constructive_score >= self._cfg.similarity_threshold:
+                entry = self._store.load(hits[0].packet_id)
+                if entry is not None:
+                    latency_ms = (time.monotonic() - t_start) * 1000
+                    tokens = tokens_in_response or self._cfg.avg_tokens_per_response
+                    self._metrics.record(
+                        was_hit=True,
+                        latency_ms=latency_ms,
+                        tokens_saved=tokens,
+                        cost_saved_usd=self._cost_model.cost_for_tokens(tokens),
+                        similarity_score=hits[0].constructive_score,
+                        tenant_id=self._cfg.tenant_id,
+                    )
+                    return entry.response
 
-        self._store_response(
-            packet_id=envelope.envelope_id,
-            query_vector=query_vector,
-            query_text=query,
-            response=response,
-            metadata=metadata,
-        )
+            # Miss — call the (possibly async) LLM function
+            if asyncio.iscoroutinefunction(call_fn):
+                response = await call_fn()
+            else:
+                response = await asyncio.get_event_loop().run_in_executor(None, call_fn)
 
-        self._metrics.record(
-            was_hit=False,
-            latency_ms=(time.monotonic() - t_start) * 1000,
-            tokens_saved=0,
-            cost_saved_usd=0.0,
-            similarity_score=hits[0].constructive_score if hits else 0.0,
-            tenant_id=self._cfg.tenant_id,
-        )
-        return response
+            self._store_response(
+                packet_id=envelope.envelope_id,
+                query_vector=query_vector,
+                query_text=query,
+                response=response,
+                metadata=metadata,
+            )
+
+            self._metrics.record(
+                was_hit=False,
+                latency_ms=(time.monotonic() - t_start) * 1000,
+                tokens_saved=0,
+                cost_saved_usd=0.0,
+                similarity_score=hits[0].constructive_score if hits else 0.0,
+                tenant_id=self._cfg.tenant_id,
+            )
+            return response
 
     # ------------------------------------------------------------------
     # Cache management
@@ -516,6 +522,40 @@ class PrismCache:
     def purge_expired(self) -> int:
         """Remove expired entries from the response store. Returns count."""
         return self._store.purge_expired()
+
+    def invalidate_by_doc_ids(self, doc_ids: set[str] | list[str]) -> int:
+        """
+        Evict cache entries linked to any of the given document IDs.
+
+        Matches WavePacket metadata (doc_id, id) and query_text substrings.
+        Returns the number of entries evicted.
+        """
+        targets = {str(d) for d in doc_ids if d}
+        if not targets:
+            return 0
+        evicted = 0
+        with self._resonance._lock:
+            items = list(self._resonance._store.items())
+        for pid, packet in items:
+            meta = packet.metadata or {}
+            refs = {str(meta.get("doc_id", "")), str(meta.get("id", ""))}
+            entry = self._store.load(pid)
+            text = entry.query_text if entry else str(meta.get("query_text", ""))
+            if not targets.intersection(refs) and not any(t in text for t in targets):
+                continue
+            try:
+                self._resonance.delete(pid)
+                self._store.delete(pid)
+                evicted += 1
+            except Exception:
+                pass
+        if evicted:
+            logger.info(
+                "PrismCache.invalidate_by_doc_ids: evicted %d (tenant=%s).",
+                evicted,
+                self._cfg.tenant_id,
+            )
+        return evicted
 
     # ------------------------------------------------------------------
     # Metrics

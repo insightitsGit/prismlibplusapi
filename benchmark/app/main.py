@@ -36,6 +36,11 @@ from benchmark.app.telemetry import setup_telemetry, trace_request
 
 logger = logging.getLogger(__name__)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+)
+
 # ---------------------------------------------------------------------------
 # Local index — the "PrismDriver" in-process vector store
 # ---------------------------------------------------------------------------
@@ -134,7 +139,8 @@ async def lifespan(app: FastAPI):
         ))
         await _driver.connect()
         logger.info(
-            "PrismDriver started — subscription loop running, streaming from %s",
+            "PrismDriver started mode=%s — subscription loop running from %s",
+            _driver.mode,
             WRAPPER_URL,
         )
     else:
@@ -424,6 +430,19 @@ async def driver_reset():
     _baseline_stats["queries"] = 0
     _baseline_stats["total_ms"] = 0.0
     return {"evicted": evicted}
+
+
+@app.post("/driver/reset-baseline")
+async def driver_reset_baseline():
+    """Reset only baseline network-path counters (keep warm local index)."""
+    _baseline_stats["queries"] = 0
+    _baseline_stats["total_ms"] = 0.0
+    d = get_driver()
+    return {
+        "baseline_reset": True,
+        "index_size": d.local_index.size if d else 0,
+        "is_warm": d.local_index.is_warm if d else False,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -334,8 +334,10 @@ class FabricConfig:
     max_stream_batch:
         Maximum number of vectors per gRPC streaming batch.
     tls_cert_path:
-        Optional path to PEM certificate for mutual TLS. If None the
-        channel runs in plaintext mode (dev/localhost only).
+        Optional path to PEM certificate for mutual TLS. Required in
+        production unless allow_insecure is True (dev/localhost only).
+    allow_insecure:
+        If True, permit plaintext gRPC.  Default False.
     """
 
     host: str = "localhost"
@@ -344,6 +346,7 @@ class FabricConfig:
     key_ttl_seconds: float = 300.0
     max_stream_batch: int = 256
     tls_cert_path: Optional[str] = None
+    allow_insecure: bool = False
 
     @property
     def address(self) -> str:
@@ -864,8 +867,13 @@ class CHORUSFabric:
                 with open(self._cfg.tls_cert_path, "rb") as f:
                     creds = grpc.ssl_channel_credentials(f.read())
                 self._channel = grpc.aio.secure_channel(self._cfg.address, creds)
-            else:
+            elif self._cfg.allow_insecure:
                 self._channel = grpc.aio.insecure_channel(self._cfg.address)
+            else:
+                raise FabricError(
+                    "TLS required for CHORUS Fabric. Set tls_cert_path or "
+                    "allow_insecure=True for local development only."
+                )
 
             logger.info("CHORUSFabric: connected to %s", self._cfg.address)
         except ImportError:

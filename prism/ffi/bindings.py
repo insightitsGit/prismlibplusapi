@@ -31,6 +31,59 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def _normalize_wal_event(raw: dict) -> dict:
+    """Normalize HTTP/gRPC WAL event payloads for LocalIndex.apply_event()."""
+    op = raw.get("op", raw.get("event_type", "INSERT"))
+    if isinstance(op, int):
+        op_map = {0: "INSERT", 1: "UPDATE", 2: "DELETE", 3: "TRUNCATE", 4: "SNAPSHOT"}
+        op = op_map.get(op, "INSERT")
+    row_id = raw.get("row_id")
+    if not row_id:
+        row_id = raw.get("event_id", str(uuid.uuid4()))
+    out: dict = {
+        "event_id": raw.get("event_id", str(uuid.uuid4())),
+        "row_id": str(row_id),
+        "op": str(op).upper(),
+        "text_repr": raw.get("text_repr", ""),
+    }
+    if "vector" in raw and raw["vector"] is not None:
+        out["vector"] = list(raw["vector"])
+    return out
+
+
+def _grpc_channel(
+    addr: str,
+    *,
+    tls_ca_path: Optional[str] = None,
+    tls_client_cert_path: Optional[str] = None,
+    tls_client_key_path: Optional[str] = None,
+    allow_insecure: bool = False,
+) -> Any:
+    import grpc.aio
+
+    if tls_client_cert_path and tls_client_key_path:
+        from prism.security.tls import load_client_credentials
+        creds = load_client_credentials(
+            tls_client_cert_path,
+            key_path=tls_client_key_path,
+            ca_path=tls_ca_path,
+        )
+        return grpc.aio.secure_channel(addr, creds)
+
+    if tls_ca_path:
+        from prism.security.tls import load_client_credentials
+        creds = load_client_credentials(tls_ca_path)
+        return grpc.aio.secure_channel(addr, creds)
+
+    if allow_insecure:
+        return grpc.aio.insecure_channel(addr)
+
+    raise DriverError(
+        "TLS required for gRPC subscribe. Set tls_ca_path (+ client cert for mTLS) "
+        "or allow_insecure=True (dev only)."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Errors
 # ---------------------------------------------------------------------------
@@ -64,8 +117,18 @@ class DriverConfig:
         Hostname or IP of the Server Wrapper on the DB node.
     wrapper_port:
         gRPC port the Server Wrapper is listening on (default 50051).
+    subscribe_http_port:
+        HTTP port for /wal/subscribe when using PRISM_WRAPPER_URL http mode.
     tls_cert_path:
-        Optional PEM certificate for mutual TLS.
+        Deprecated alias — use tls_ca_path for server CA verification.
+    tls_ca_path:
+        PEM CA bundle to verify the wrapper server certificate.
+    tls_client_cert_path:
+        Client certificate PEM for mutual TLS.
+    tls_client_key_path:
+        Client private key PEM for mutual TLS.
+    allow_insecure:
+        Allow plaintext gRPC/HTTP.  Default False — set True for local dev only.
     reconnect_delay_seconds:
         How long to wait before reconnecting after a lost connection.
     tenant_id:
@@ -76,10 +139,32 @@ class DriverConfig:
     """
     wrapper_host:              str        = "localhost"
     wrapper_port:              int        = 50051
+    subscribe_http_port:       int        = 8081
     tls_cert_path:             Optional[str] = None
+    tls_ca_path:               Optional[str] = None
+    tls_client_cert_path:      Optional[str] = None
+    tls_client_key_path:       Optional[str] = None
+    allow_insecure:            bool       = False
     reconnect_delay_seconds:   float      = 5.0
     tenant_id:                 str        = ""
     dll_search_paths:          tuple[str, ...] = ()
+
+    @classmethod
+    def from_env(cls) -> "DriverConfig":
+        """Build config from PRISM_DRIVER_* / PRISM_WRAPPER_HOST env vars."""
+        def _bool(key: str) -> bool:
+            return os.getenv(key, "").lower() in ("1", "true", "yes")
+
+        return cls(
+            wrapper_host=os.getenv("PRISM_WRAPPER_HOST", os.getenv("PRISM_DRIVER_WRAPPER_HOST", "localhost")),
+            wrapper_port=int(os.getenv("PRISM_WRAPPER_PORT", os.getenv("PRISM_DRIVER_WRAPPER_PORT", "50051"))),
+            tenant_id=os.getenv("PRISM_TENANT_ID", os.getenv("PRISM_DRIVER_TENANT_ID", "")),
+            tls_ca_path=os.getenv("PRISM_DRIVER_TLS_CA") or None,
+            tls_client_cert_path=os.getenv("PRISM_DRIVER_TLS_CLIENT_CERT") or None,
+            tls_client_key_path=os.getenv("PRISM_DRIVER_TLS_CLIENT_KEY") or None,
+            tls_cert_path=os.getenv("PRISM_DRIVER_TLS_CA") or None,
+            allow_insecure=_bool("PRISM_DRIVER_ALLOW_INSECURE"),
+        )
 
 
 @dataclass(frozen=True)
@@ -103,44 +188,101 @@ class LocalIndex:
     Receives WAL events from the subscription loop and answers queries
     in sub-millisecond time — no network hop, no DB round-trip.
 
-    This is the local PrismResonance replica that makes PrismDriver faster
-    than a direct database connection.
+    Supports INSERT/UPDATE (upsert by row_id) and DELETE via apply_event().
     """
 
     def __init__(self, tenant_id: str, dim: int = 64) -> None:
         self._tenant_id = tenant_id
         self._dim = dim
-        self._lock = asyncio.Lock()
-        self._rows: list[dict] = []
+        self._by_row_id: dict[str, dict] = {}
         self._matrix: Optional[np.ndarray] = None
+        self._rows: list[dict] = []
         self._dirty = True
 
         # Telemetry
         self.rows_received:    int   = 0
+        self.rows_deleted:     int   = 0
         self.query_count:      int   = 0
         self.total_latency_ms: float = 0.0
         self.last_event_at:    Optional[float] = None
 
-    def ingest(self, event_id: str, row_id: str,
-               text_repr: str, vector: list[float]) -> None:
-        """
-        Feed one WAL event into the local index.
-        Called from the subscription loop — must be fast (no I/O, no locks
-        because asyncio is single-threaded; lock only needed if using threads).
-        """
-        self._rows.append({
+    def upsert(
+        self,
+        event_id: str,
+        row_id: str,
+        text_repr: str,
+        vector: list[float],
+    ) -> None:
+        """Insert or replace a row by row_id."""
+        self._by_row_id[row_id] = {
             "event_id":  event_id,
             "row_id":    row_id,
             "text_repr": text_repr,
             "vector":    np.array(vector, dtype=np.float32),
-        })
+        }
         self._dirty = True
         self.rows_received += 1
         self.last_event_at = time.monotonic()
 
+    def remove(self, row_id: str) -> bool:
+        """Remove a row by row_id. Returns True if a row was removed."""
+        if row_id not in self._by_row_id:
+            return False
+        del self._by_row_id[row_id]
+        self._dirty = True
+        self.rows_deleted += 1
+        self.rows_received += 1
+        self.last_event_at = time.monotonic()
+        return True
+
+    def apply_event(
+        self,
+        *,
+        event_id: str,
+        row_id: str,
+        op: str,
+        text_repr: str = "",
+        vector: Optional[list[float]] = None,
+    ) -> None:
+        """
+        Apply a WAL row event (INSERT, UPDATE, DELETE, SNAPSHOT).
+
+        DELETE removes the row.  INSERT/UPDATE/SNAPSHOT upsert when vector
+        is provided.
+        """
+        op_u = op.upper()
+        if op_u == "DELETE":
+            self.remove(row_id)
+            return
+        if op_u in ("INSERT", "UPDATE", "SNAPSHOT") and vector is not None:
+            self.upsert(event_id, row_id, text_repr, vector)
+            return
+        if vector is not None:
+            self.upsert(event_id, row_id, text_repr, vector)
+
+    def ingest(
+        self,
+        event_id: str,
+        row_id: str,
+        text_repr: str,
+        vector: list[float],
+        *,
+        op: str = "INSERT",
+    ) -> None:
+        """Backward-compatible ingest — delegates to apply_event()."""
+        self.apply_event(
+            event_id=event_id,
+            row_id=row_id,
+            op=op,
+            text_repr=text_repr,
+            vector=vector,
+        )
+
     def _rebuild(self) -> None:
+        self._rows = list(self._by_row_id.values())
         if not self._rows:
             self._matrix = None
+            self._dirty = False
             return
         self._matrix = np.stack([r["vector"] for r in self._rows]).astype(np.float32)
         self._dirty = False
@@ -193,11 +335,13 @@ class LocalIndex:
         return results, elapsed_ms
 
     def reset(self) -> int:
-        n = len(self._rows)
+        n = len(self._by_row_id)
+        self._by_row_id.clear()
         self._rows.clear()
         self._matrix = None
         self._dirty = True
         self.rows_received = 0
+        self.rows_deleted = 0
         self.query_count = 0
         self.total_latency_ms = 0.0
         self.last_event_at = None
@@ -205,7 +349,7 @@ class LocalIndex:
 
     @property
     def size(self) -> int:
-        return len(self._rows)
+        return len(self._by_row_id)
 
     @property
     def avg_latency_ms(self) -> float:
@@ -213,7 +357,7 @@ class LocalIndex:
 
     @property
     def is_warm(self) -> bool:
-        return len(self._rows) > 0
+        return len(self._by_row_id) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -380,19 +524,50 @@ class _PythonDriver:
     """
     Pure-Python CHORUS Fabric client — development / test fallback.
 
-    Speaks the same wire protocol as the C++ DLL but runs in-process.
-    Suitable for development and environments that haven't compiled the DLL.
+    Speaks WrapperService gRPC for Query/Write when proto stubs are available.
     """
 
     def __init__(self) -> None:
         self._fabric: Any = None
         self._connected = False
+        self._host = "localhost"
+        self._port = 50051
+        self._tenant_id = ""
+        self._tls_ca_path: Optional[str] = None
+        self._tls_client_cert_path: Optional[str] = None
+        self._tls_client_key_path: Optional[str] = None
+        self._allow_insecure = False
 
-    async def connect(self, host: str, port: int, tenant_id: str, tls_cert: Optional[str]) -> None:
+    async def connect(
+        self,
+        host: str,
+        port: int,
+        tenant_id: str,
+        tls_ca_path: Optional[str] = None,
+        tls_client_cert_path: Optional[str] = None,
+        tls_client_key_path: Optional[str] = None,
+        *,
+        allow_insecure: bool = False,
+    ) -> None:
         from prism.lib.fabric import CHORUSFabric, FabricConfig
-        cfg = FabricConfig(host=host, port=port, tls_cert_path=tls_cert)
+        self._host = host
+        self._port = port
+        self._tenant_id = tenant_id
+        self._tls_ca_path = tls_ca_path
+        self._tls_client_cert_path = tls_client_cert_path
+        self._tls_client_key_path = tls_client_key_path
+        self._allow_insecure = allow_insecure
+        cfg = FabricConfig(
+            host=host,
+            port=port,
+            tls_cert_path=tls_ca_path,
+            allow_insecure=allow_insecure,
+        )
         self._fabric = CHORUSFabric(cfg)
-        await self._fabric.connect()
+        try:
+            await self._fabric.connect()
+        except Exception:
+            self._fabric = None
         self._connected = True
         logger.debug("_PythonDriver: connected to %s:%d", host, port)
 
@@ -411,27 +586,52 @@ class _PythonDriver:
         if not self._connected:
             raise NotConnectedError()
 
-        # In stub mode: send the vector and return a placeholder result.
-        # In production the Server Wrapper responds with scored matches.
-        if self._fabric is not None:
-            await self._fabric.send(vector)
-
-        logger.debug(
-            "_PythonDriver.query: table=%s top_k=%d threshold=%.2f [stub response]",
-            table,
-            top_k,
-            threshold,
-        )
-        return []
+        try:
+            from prism.ffi.grpc_client import grpc_query
+            return await grpc_query(
+                host=self._host,
+                port=self._port,
+                tenant_id=self._tenant_id,
+                table=table,
+                vector=vector,
+                top_k=top_k,
+                threshold=threshold,
+                tls_ca_path=self._tls_ca_path,
+                tls_client_cert_path=self._tls_client_cert_path,
+                tls_client_key_path=self._tls_client_key_path,
+                allow_insecure=self._allow_insecure,
+            )
+        except DriverError:
+            raise
+        except Exception as exc:
+            logger.debug("_PythonDriver.query fallback (no gRPC): %s", exc)
+            if self._fabric is not None:
+                await self._fabric.send(vector)
+            return []
 
     async def write(self, table: str, vector: np.ndarray, text_repr: str) -> None:
         if not self._connected:
             raise NotConnectedError()
 
-        if self._fabric is not None:
-            await self._fabric.send(vector)
-
-        logger.debug("_PythonDriver.write: table=%s text=%s...", table, text_repr[:40])
+        try:
+            from prism.ffi.grpc_client import grpc_write
+            await grpc_write(
+                host=self._host,
+                port=self._port,
+                tenant_id=self._tenant_id,
+                table=table,
+                vector=vector,
+                text_repr=text_repr,
+                tls_ca_path=self._tls_ca_path,
+                tls_client_cert_path=self._tls_client_cert_path,
+                tls_client_key_path=self._tls_client_key_path,
+                allow_insecure=self._allow_insecure,
+            )
+            return
+        except Exception as exc:
+            logger.debug("_PythonDriver.write fallback: %s", exc)
+            if self._fabric is not None:
+                await self._fabric.send(vector)
 
 
 # ---------------------------------------------------------------------------
@@ -515,7 +715,10 @@ class PrismDriver:
                 host=self._cfg.wrapper_host,
                 port=self._cfg.wrapper_port,
                 tenant_id=self._cfg.tenant_id,
-                tls_cert=self._cfg.tls_cert_path,
+                tls_ca_path=self._cfg.tls_ca_path or self._cfg.tls_cert_path,
+                tls_client_cert_path=self._cfg.tls_client_cert_path,
+                tls_client_key_path=self._cfg.tls_client_key_path,
+                allow_insecure=self._cfg.allow_insecure,
             )
             logger.info(
                 "PrismDriver: connected via Python driver to %s:%d",
@@ -586,11 +789,12 @@ class PrismDriver:
 
                 rows_this_session = 0
                 async for event in self._stream_wal_events():
-                    self.local_index.ingest(
+                    self.local_index.apply_event(
                         event_id=event.get("event_id", str(uuid.uuid4())),
                         row_id=event["row_id"],
+                        op=event.get("op", "INSERT"),
                         text_repr=event.get("text_repr", ""),
-                        vector=event["vector"],
+                        vector=event.get("vector"),
                     )
                     rows_this_session += 1
 
@@ -674,7 +878,8 @@ class PrismDriver:
                     line = line.strip()
                     if not line:
                         continue
-                    yield json.loads(line)
+                    raw = json.loads(line)
+                    yield _normalize_wal_event(raw)
 
     async def _stream_grpc(self) -> AsyncIterator[dict]:
         """
@@ -685,8 +890,7 @@ class PrismDriver:
         """
         try:
             import grpc.aio
-            import chorus_pb2          # type: ignore[import]
-            import chorus_pb2_grpc     # type: ignore[import]
+            from prism.wrapper.proto import chorus_pb2, chorus_pb2_grpc
         except ImportError:
             logger.warning(
                 "PrismDriver: grpcio/proto stubs not available — "
@@ -695,18 +899,26 @@ class PrismDriver:
             return
 
         addr = f"{self._cfg.wrapper_host}:{self._cfg.wrapper_port}"
-        channel = grpc.aio.insecure_channel(addr)
+        channel = _grpc_channel(
+            addr,
+            tls_ca_path=self._cfg.tls_ca_path or self._cfg.tls_cert_path,
+            tls_client_cert_path=self._cfg.tls_client_cert_path,
+            tls_client_key_path=self._cfg.tls_client_key_path,
+            allow_insecure=self._cfg.allow_insecure,
+        )
         stub = chorus_pb2_grpc.WrapperServiceStub(channel)
 
         request = chorus_pb2.HelloRequest(tenant_id=self._cfg.tenant_id)
+        op_map = {0: "INSERT", 1: "UPDATE", 2: "DELETE", 3: "TRUNCATE", 4: "SNAPSHOT"}
         try:
             async for event in stub.Subscribe(request):
-                yield {
+                yield _normalize_wal_event({
                     "event_id":  event.event_id,
-                    "row_id":    event.row_id,
+                    "row_id":    event.row_id or event.event_id,
                     "text_repr": event.text_repr,
-                    "vector":    list(event.vector),
-                }
+                    "vector":    list(np.frombuffer(event.vector, dtype=np.float32)) if event.vector else None,
+                    "op":        op_map.get(int(event.op), "INSERT"),
+                })
         finally:
             await channel.close()
 
@@ -827,9 +1039,11 @@ class PrismDriver:
     def index_status(self) -> dict:
         """Snapshot of the local index and subscription loop state."""
         return {
+            "driver_mode":       self.mode,
             "index_size":        self.local_index.size,
             "is_warm":           self.local_index.is_warm,
             "rows_received":     self.local_index.rows_received,
+            "rows_deleted":      self.local_index.rows_deleted,
             "avg_query_ms":      round(self.local_index.avg_latency_ms, 3),
             "query_count":       self.local_index.query_count,
             "sub_connects":      self.sub_connects,

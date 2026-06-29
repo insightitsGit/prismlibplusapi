@@ -12,6 +12,7 @@ from prism.lib.fabric import (
     FabricConfig,
     CHORUSFabric,
     VectorFrame,
+    FrameType,
     CipherError,
     WatermarkError,
     KeyExpiredError,
@@ -91,19 +92,20 @@ class TestTensorCipher:
 
 class TestVectorFrame:
     def test_roundtrip_serialisation(self) -> None:
-        vectors = np.random.randn(4, DIM).astype(np.float32)
+        payload = np.random.randn(4, DIM).astype(np.float32).tobytes()
         frame = VectorFrame(
             key_id="a" * 36,
             seq=42,
             watermark=b"\xde\xad" * 16,
-            vectors=vectors,
+            frame_type=FrameType.VECTOR,
+            payload=payload,
         )
         data = frame.to_bytes()
         recovered = VectorFrame.from_bytes(data)
 
         assert recovered.seq == frame.seq
         assert recovered.watermark == frame.watermark
-        np.testing.assert_array_equal(recovered.vectors, frame.vectors)
+        assert recovered.payload == frame.payload
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +116,7 @@ class TestVectorFrame:
 class TestCHORUSFabricStubMode:
     @pytest.mark.asyncio
     async def test_connect_and_send(self) -> None:
-        cfg = FabricConfig(host="localhost", port=50051, vector_dim=DIM)
+        cfg = FabricConfig(host="localhost", port=50051, vector_dim=DIM, allow_insecure=True)
         async with CHORUSFabric(cfg) as fabric:
             vectors = np.random.randn(8, DIM).astype(np.float32)
             frames = await fabric.send(vectors)
@@ -122,7 +124,7 @@ class TestCHORUSFabricStubMode:
 
     @pytest.mark.asyncio
     async def test_batch_splitting(self) -> None:
-        cfg = FabricConfig(host="localhost", port=50051, vector_dim=DIM, max_stream_batch=4)
+        cfg = FabricConfig(host="localhost", port=50051, vector_dim=DIM, max_stream_batch=4, allow_insecure=True)
         async with CHORUSFabric(cfg) as fabric:
             vectors = np.random.randn(12, DIM).astype(np.float32)
             frames = await fabric.send(vectors)
@@ -130,7 +132,7 @@ class TestCHORUSFabricStubMode:
 
     @pytest.mark.asyncio
     async def test_key_rotation_on_expire(self) -> None:
-        cfg = FabricConfig(host="localhost", port=50051, vector_dim=DIM, key_ttl_seconds=0.001)
+        cfg = FabricConfig(host="localhost", port=50051, vector_dim=DIM, key_ttl_seconds=0.001, allow_insecure=True)
         async with CHORUSFabric(cfg) as fabric:
             import asyncio
             await asyncio.sleep(0.01)  # let key expire

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "prismlib.fullname" . }}-config
+  labels:
+    app.kubernetes.io/name: {{ include "prismlib.name" . }}
+data:
+  PRISM_TENANT_ID: {{ .Values.env.tenantId | quote }}
+  PRISM_API_REQUIRE_AUTH: {{ .Values.env.prismApiRequireAuth | quote }}
+  PRISM_API_RATE_LIMIT_RPM: {{ .Values.auth.rateLimitRpm | quote }}
+  PRISM_HTTP_PORT: {{ .Values.service.httpPort | quote }}
+  {{- if .Values.wrapper.enabled }}
+  PRISM_WRAPPER_GRPC_PORT: {{ .Values.service.grpcPort | quote }}
+  {{- end }}

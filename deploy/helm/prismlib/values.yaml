@@ -1,0 +1,100 @@
+replicaCount: 1
+
+
+
+image:
+
+  repository: prismlib/app
+
+  tag: "0.7.0"
+
+  pullPolicy: IfNotPresent
+
+
+
+service:
+
+  type: ClusterIP
+
+  httpPort: 9100
+
+  grpcPort: 50051
+
+  subscribePort: 8081
+
+
+
+auth:
+
+  requireAuth: true
+
+  rateLimitRpm: 120
+
+  createSecret: false
+
+  apiKeySecret: prism-api-keys
+
+  # Populated when createSecret: true (comma-separated keys in secret)
+
+  apiKeys: []
+
+
+
+tls:
+
+  enabled: true
+
+  createSecret: false
+
+  certSecret: prism-tls
+
+  caSecret: prism-mtls-ca
+
+  mountCa: true
+
+  certificate: ""
+
+  privateKey: ""
+
+
+
+resources:
+
+  limits:
+
+    cpu: "2"
+
+    memory: 2Gi
+
+  requests:
+
+    cpu: 500m
+
+    memory: 512Mi
+
+
+
+env:
+
+  tenantId: "production"
+
+  prismApiRequireAuth: "true"
+
+
+
+wrapper:
+
+  enabled: false
+
+  dbDsn: ""
+
+  flavor: postgresql
+
+
+
+monitoring:
+
+  prometheusScrape: true
+
+  metricsPath: /metrics
+

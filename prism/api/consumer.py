@@ -155,6 +155,8 @@ class PrismAPIClient:
         source_field: str = "body",
         retry: Optional[RetryConfig] = None,
         chorus_path: str = "/chorus/search",
+        api_key: Optional[str] = None,
+        bearer_token: Optional[str] = None,
     ) -> None:
         self._projector = projector
         self._embedder = embedder
@@ -164,6 +166,8 @@ class PrismAPIClient:
         self._source_field = source_field
         self._retry = retry or RetryConfig()
         self._chorus_path = chorus_path
+        self._api_key = api_key
+        self._bearer_token = bearer_token
 
         # Persistent HTTP connection (keep-alive, reused across requests)
         self._conn: Optional[http.client.HTTPConnection] = None
@@ -254,35 +258,43 @@ class PrismAPIClient:
         Use response.vectors for a stacked (N, dim) array ready for
         PrismResonance retrieval.
         """
-        t0 = time.perf_counter()
+        from prism.observability.otel import trace_span
 
-        # Embed query (one call — the only embedding on the consumer side)
-        raw_emb = self._embedder.embed([query_text])[0]   # (embed_dim,)
-        envelope = self._projector.project(raw_emb)
-        query_vec = envelope.vector   # (target_dim,) float32
+        with trace_span(
+            "prism.api.client.query",
+            host=self._host,
+            port=self._port,
+            loopback=self._loopback is not None,
+        ):
+            t0 = time.perf_counter()
 
-        context: dict[str, Any] = {
-            "query_text": query_text,
-            "top_k": top_k,
-            **(extra_context or {}),
-        }
-        request = APIRequest(query_vector=query_vec, context=context)
+            # Embed query (one call — the only embedding on the consumer side)
+            raw_emb = self._embedder.embed([query_text])[0]   # (embed_dim,)
+            envelope = self._projector.project(raw_emb)
+            query_vec = envelope.vector   # (target_dim,) float32
 
-        # Exchange frames
-        resp_frame = self._exchange(request)
+            context: dict[str, Any] = {
+                "query_text": query_text,
+                "top_k": top_k,
+                **(extra_context or {}),
+            }
+            request = APIRequest(query_vector=query_vec, context=context)
 
-        # Decode response
-        raw_results = resp_frame.decode_api_response()
-        result_pairs = unpack_response_payload(raw_results, source_field=self._source_field)
+            # Exchange frames
+            resp_frame = self._exchange(request)
 
-        latency_ms = (time.perf_counter() - t0) * 1000.0
-        return APIResponse(
-            results=result_pairs,
-            provider_id="remote" if self._loopback is None else self._loopback._provider_id,
-            request_id=request.request_id,
-            latency_ms=latency_ms,
-            embedding_calls_saved=len(result_pairs),
-        )
+            # Decode response
+            raw_results = resp_frame.decode_api_response()
+            result_pairs = unpack_response_payload(raw_results, source_field=self._source_field)
+
+            latency_ms = (time.perf_counter() - t0) * 1000.0
+            return APIResponse(
+                results=result_pairs,
+                provider_id="remote" if self._loopback is None else self._loopback._provider_id,
+                request_id=request.request_id,
+                latency_ms=latency_ms,
+                embedding_calls_saved=len(result_pairs),
+            )
 
     def query_vector(
         self,
@@ -375,6 +387,10 @@ class PrismAPIClient:
             "Content-Length": str(len(data)),
             "Connection": "keep-alive",
         }
+        if self._api_key:
+            headers["X-API-Key"] = self._api_key
+        if self._bearer_token:
+            headers["Authorization"] = f"Bearer {self._bearer_token}"
 
         last_exc: Optional[Exception] = None
         for attempt in range(self._retry.max_retries + 1):

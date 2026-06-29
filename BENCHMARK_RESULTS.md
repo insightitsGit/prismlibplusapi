@@ -7,7 +7,8 @@ All numbers below are from **real runs**. Two environments:
 
 Raw data:
 - `benchmark/results/prism_mixed_*_report.json`, `prism_light_*_report.json` (cache)
-- `benchmark/results/driver_benchmark_*.json` (driver)
+- `benchmark/results/driver_benchmark_azure.json` (driver e2e, latest)
+- `benchmark/results/driver_benchmark_*.json` (driver history)
 - `benchmark/cluster/cluster_benchmark_results_azure.json` (cluster mesh)
 - `benchmark/cluster/cluster_benchmark_results_loopback.json` (earlier loopback run, for reference)
 
@@ -22,14 +23,26 @@ Raw data:
 
 Avg hit latency ~291 ms, avg miss latency ~415 ms (mixed scenario).
 
-## 2. PrismDriver — WAL-streamed DB driver (Azure)
+## 2. PrismDriver — WAL-streamed DB driver (Azure, 2-container e2e)
+
+**Deploy:** `deploy/azure_driver_run.ps1` (or `.sh`)  
+**Topology:** `prism-wrapper-sim` (DB node) + `prism-benchmark` (app node with Python PrismDriver)  
+**Latest run:** 2026-06-29 — `benchmark/results/driver_benchmark_azure.json`  
+**Logs:** `benchmark/results/azure_e2e_logs/`
 
 | Path | Avg read latency | Result |
 |------|------------------|--------|
-| Baseline (network to DB) | 142.83 ms | — |
-| PrismDriver (local index) | **2.02 ms** | **70.7× faster · 98.6% latency reduction** |
+| Baseline (network to DB) | 118.5 ms | — |
+| PrismDriver (local index, Python mode) | **0.27 ms** | **439× faster · 99.8% latency reduction** |
 
-30 concurrent users × 60 s/phase, 11,000-row index, warmup throughput ~26k rows/s.
+20 concurrent users × 45 s/phase, 1,000-row catalog, WAL subscribe warmup ~51k rows/s ingest.  
+Driver mode: `python` (C++ DLL not built in OSS repo).
+
+**Container URLs (rg-prism-driver-e2e, westus2):**
+- App: `https://prism-benchmark.gentlesmoke-8bb70e10.westus2.azurecontainerapps.io`
+- DB:  `https://prism-wrapper-sim.gentlesmoke-8bb70e10.westus2.azurecontainerapps.io`
+
+Previous run (2026-06-24): 70.7× / 2.02 ms driver / 142.8 ms baseline — `driver_benchmark_20260624_135338.json`.
 
 ---
 
@@ -93,6 +106,8 @@ Deploy: `deploy/azure_cluster_run.sh`.
 
 ## Scope & honesty notes
 
+- Driver e2e uses **wrapper-sim** (in-memory catalog), not production Postgres + `prism-wrapper`. Numbers are real for that topology; validate on your DB before SLAs.
+- Driver ran in **Python mode**; C++ DLL sources are not in the OSS repo.
 - The cluster ran across two VNets but **both in westus2** — cross-*region*
   latency and network-partition behavior are untested.
 - Cluster benchmark is a **functional 3-node run** (5 queries), not a sustained

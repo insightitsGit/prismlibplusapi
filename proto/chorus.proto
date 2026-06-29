@@ -59,6 +59,7 @@ message RowEvent {
   string   text_repr  = 7;   // human-readable for debugging / RAG
   bytes    watermark  = 8;   // HMAC-SHA256 chain of custody
   string   key_id     = 9;   // cipher key that encrypted `vector`
+  string   row_id     = 10;  // stable primary key for upsert/delete
 }
 
 enum EventOp {
@@ -131,6 +132,7 @@ message HelloRequest {
   string node_type   = 2;   // "driver" | "wrapper"
   string version     = 3;   // semver
   repeated string capabilities = 4;   // e.g. ["wal", "query", "write"]
+  string tenant_id   = 5;   // tenant routing for Subscribe stream
 }
 
 message HelloResponse {

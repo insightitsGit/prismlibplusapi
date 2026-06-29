@@ -58,10 +58,14 @@ def wait_healthy(url: str, label: str, timeout: int = 60) -> bool:
 
 
 def reset_driver(app_url: str) -> None:
-    r = httpx.post(f"{app_url}/driver/reset", timeout=10)
+    """Reset baseline counters only — preserve warm local index for driver phase."""
+    r = httpx.post(f"{app_url}/driver/reset-baseline", timeout=10)
     r.raise_for_status()
     d = r.json()
-    console.print(f"[yellow]Driver index reset (evicted {d['evicted']} rows)[/yellow]")
+    console.print(
+        f"[yellow]Baseline stats reset (index_size={d.get('index_size', 0)}, "
+        f"is_warm={d.get('is_warm', False)})[/yellow]"
+    )
 
 
 def warmup_driver(app_url: str, rows: int) -> dict:
@@ -76,11 +80,12 @@ def warmup_driver(app_url: str, rows: int) -> dict:
             r.raise_for_status()
             status = r.json()
             received = status.get("rows_received", 0)
+            index_sz = status.get("index_size", 0)
             is_warm  = status.get("is_warm", False)
-            if received != last_rows:
-                console.print(f"  rows_received={received} ...")
+            if received != last_rows or index_sz != last_rows:
+                console.print(f"  rows_received={received} index_size={index_sz} ...")
                 last_rows = received
-            if is_warm and received >= min(rows, 500):
+            if is_warm and index_sz >= min(rows, 100):
                 elapsed = time.monotonic() - t0
                 throughput = received / elapsed if elapsed > 0 else 0
                 console.print(
@@ -221,6 +226,43 @@ def print_report(
     )
 
 
+def capture_container_logs(
+    *,
+    resource_group: str,
+    app_name: str,
+    log_dir: Path,
+    tail: int = 200,
+) -> Path:
+    """Fetch recent Azure Container App logs via az CLI."""
+    log_dir.mkdir(parents=True, exist_ok=True)
+    out_path = log_dir / f"{app_name}.log"
+    import shutil
+    az_bin = shutil.which("az") or "az"
+    cmd = [
+        az_bin, "containerapp", "logs", "show",
+        "--name", app_name,
+        "--resource-group", resource_group,
+        "--tail", str(tail),
+        "--follow", "false",
+    ]
+    console.print(f"[dim]Capturing logs: {app_name} -> {out_path}[/dim]")
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        body = proc.stdout or proc.stderr or ""
+        try:
+            out_path.write_text(body, encoding="utf-8", errors="replace")
+        except OSError:
+            alt = log_dir / f"{app_name}_{int(time.time())}.log"
+            alt.write_text(body, encoding="utf-8", errors="replace")
+            out_path = alt
+    except Exception as exc:
+        try:
+            out_path.write_text(f"log capture failed: {exc}\n", encoding="utf-8")
+        except OSError:
+            pass
+    return out_path
+
+
 def save_report(
     baseline_metrics: dict,
     driver_metrics: dict,
@@ -230,6 +272,14 @@ def save_report(
     ts = time.strftime("%Y%m%d_%H%M%S")
     path = Path("benchmark/results") / f"driver_benchmark_{ts}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    bm = baseline_metrics.get("baseline", {})
+    dm = driver_metrics.get("driver", {})
+    b_avg = bm.get("avg_latency_ms", 0)
+    d_avg = dm.get("avg_latency_ms", 0)
+    speedup = (b_avg / d_avg) if d_avg > 0 else 0.0
+    pct = ((b_avg - d_avg) / b_avg * 100) if b_avg > 0 else 0.0
+
     report = {
         "timestamp":        ts,
         "app_url":          args.app_url,
@@ -240,8 +290,21 @@ def save_report(
         "warmup_info":      warmup_info,
         "baseline_metrics": baseline_metrics,
         "driver_metrics":   driver_metrics,
-        "speedup_factor":   driver_metrics.get("speedup_factor", 0),
+        "speedup_factor":   round(speedup, 1),
+        "latency_reduction_pct": round(pct, 1),
+        "driver_mode":      driver_metrics.get("sub_status", {}).get("driver_mode", "unknown"),
+        "summary": {
+            "baseline_avg_ms": b_avg,
+            "driver_avg_ms": d_avg,
+            "speedup": f"{speedup:.1f}x",
+            "latency_reduction": f"{pct:.1f}%",
+            "index_rows": warmup_info.get("index_size", 0),
+            "warmup_throughput_rows_per_s": round(warmup_info.get("throughput_rows_per_s", 0)),
+            "test_config": f"{args.users} users x {args.duration}s per phase, Azure Container Apps",
+        },
     }
+    if getattr(args, "log_dir", None):
+        report["log_dir"] = str(args.log_dir)
     path.write_text(json.dumps(report, indent=2))
     console.print(f"[dim]Report saved: {path}[/dim]")
     return path
@@ -259,6 +322,13 @@ def main() -> None:
                         help="Seconds per phase")
     parser.add_argument("--warmup-rows", type=int, default=5000,
                         help="Rows to pull into local index before driver phase")
+    parser.add_argument("--capture-logs", action="store_true",
+                        help="Capture Azure Container App logs after benchmark")
+    parser.add_argument("--resource-group", default="",
+                        help="Azure RG for log capture")
+    parser.add_argument("--app-name", default="prism-benchmark")
+    parser.add_argument("--wrapper-name", default="prism-wrapper-sim")
+    parser.add_argument("--log-dir", default="benchmark/results/azure_e2e_logs")
     args = parser.parse_args()
 
     console.print(f"[bold]PrismDriver Benchmark[/bold]")
@@ -308,6 +378,19 @@ def main() -> None:
 
     print_report(baseline_metrics, driver_metrics, warmup_info, args)
     save_report(baseline_metrics, driver_metrics, warmup_info, args)
+
+    if args.capture_logs and args.resource_group:
+        log_dir = Path(args.log_dir)
+        capture_container_logs(
+            resource_group=args.resource_group,
+            app_name=args.app_name,
+            log_dir=log_dir,
+        )
+        capture_container_logs(
+            resource_group=args.resource_group,
+            app_name=args.wrapper_name,
+            log_dir=log_dir,
+        )
 
 
 if __name__ == "__main__":

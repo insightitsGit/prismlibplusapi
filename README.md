@@ -1,23 +1,86 @@
-# PrismLib
+# PrismLib Plus (`prismlib-plus`)
 
-[![PyPI version](https://img.shields.io/badge/pypi-v0.4.0-blue.svg)](https://pypi.org/project/prismlib/)
+[![PyPI — prismlib (base)](https://img.shields.io/badge/pypi-prismlib_0.4.0-blue.svg)](https://pypi.org/project/prismlib/)
+[![Version](https://img.shields.io/badge/version-0.7.0-green.svg)](RELEASE_NOTES.md)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://pypi.org/project/prismlib/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub](https://img.shields.io/badge/github-insightitsGit%2Fprismlib-black?logo=github)](https://github.com/insightitsGit/prismlib)
 
-**Tensor-native LLM cache, distributed DB driver, and cluster intelligence — one package.**
+**The in-process intelligence stack for LLM applications** — semantic cache, WAL-streamed vector replica, multi-node cluster mesh, and a vector-native agent API with enterprise auth and observability.
 
-PrismLib has three layers. Use any combination:
-
-| Layer | What it solves | Key number | Install |
-|-------|---------------|-----------|---------|
-| **PrismCache** | LLM API cost — semantic cache catches repeated & paraphrased queries in-process | **91–96% hit rate** | `pip install "prismlib[cache]"` |
-| **PrismDriver** | DB read latency — WAL-streamed local index replaces network round-trips | **98.6% latency reduction** (143ms → 2ms) | `pip install "prismlib[fabric]"` |
-| **PrismLib Micro** | Cluster token cost + HA — shares answers across containers, auto-failover, health mesh | **76% fewer tokens cluster-wide** | included in `prismlib[fabric]` |
-
-All three run entirely in-process. No Redis. No Pinecone. No Prometheus. No Kubernetes operator.
+> **Release notes:** [RELEASE_NOTES.md](RELEASE_NOTES.md) · **PyPI:** [`prismlib` 0.4.0](https://pypi.org/project/prismlib/) (base) → **`prismlib-plus` 0.7.0** (this repo, full stack)
 
 ---
+
+## What is PrismLib?
+
+PrismLib is **not** another vector database or Redis wrapper. It is a **tensor-native data plane** that sits next to your app and removes three expensive bottlenecks:
+
+| Bottleneck | PrismLib answer | Component |
+|------------|-----------------|-----------|
+| Repeated LLM calls for similar questions | Semantic cache — paraphrases hit in-process | **PrismCache** |
+| Every read goes to the DB over the network | WAL stream → local vector index on the app node | **PrismDriver** |
+| Every agent re-embeds retrieval results | Provider embeds once; consumer gets float32 vectors | **PrismAPI** |
+| Multi-container agents duplicate work | Shared answers + health mesh + failover | **PrismLib Micro** |
+
+Everything runs **in-process** on your machines. Optional extras add the DB-node daemon (`prism-wrapper`), enterprise HTTP (`[enterprise]`), and Helm/Docker deploy templates. No mandatory Redis, Pinecone, or Kubernetes operator.
+
+### The four layers (install what you need)
+
+| Layer | One-line description | Azure-validated headline | Extra |
+|-------|---------------------|--------------------------|-------|
+| **PrismCache** | Wrap any LLM call; similar queries return cached answers | **91–96% hit rate** under load | `[cache]` |
+| **PrismDriver** | Subscribe to DB WAL; query a local index instead of the network | **439× faster reads** (118ms → 0.27ms) | `[fabric]` |
+| **PrismAPI** | HTTP/CHORUS API — pre-projected vectors for agents & RAG | 83% fewer consumer embed calls (design) | `[enterprise]` |
+| **PrismLib Micro** | Cluster-wide token cache, alerts, Blue/Green/Orange failover | **76% fewer tokens** cluster-wide | `[fabric]` |
+
+Deep dive: [RESULTS_AND_IMPROVEMENTS.md](RESULTS_AND_IMPROVEMENTS.md) · [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) · [ENTERPRISE.md](ENTERPRISE.md)
+
+### How it fits together
+
+```
+Your app
+  ├── PrismCache      → skip LLM when the question is semantically similar
+  ├── PrismDriver     → skip DB network when the row vector is already local
+  ├── PrismAPI client → skip re-embedding retrieval results from a provider
+  └── ClusterCache    → skip LLM when another node already answered
+
+DB node (optional)
+  └── prism-wrapper   → reads WAL/binlog, streams encrypted vectors via CHORUS gRPC
+```
+
+Built on **[PrismResonance](https://github.com/insightitsGit/prismresonance)** (wave-memory similarity) and **[CHORUS Fabric](https://github.com/insightitsGit/chorus_fabric)** (encrypted float32 streaming).
+
+---
+
+### PrismAPI — vector-native API for agents (new in 0.7.0)
+
+The provider embeds and projects document vectors **once**. Consumers receive CHORUS `API_RESPONSE` frames with float32 vectors — no second embedding pass on retrieval.
+
+```python
+from prism.api import PrismAPIProvider, PrismAPIClient, AuthConfig
+from prism.lib.lang import PrismProjector, ProjectionConfig
+
+provider = PrismAPIProvider(projector=..., embedder=..., semantic_fields=["title", "body"])
+
+@provider.expose
+def search(query: str, top_k: int = 10) -> list[dict]:
+    return my_db.search(query)[:top_k]
+
+# Consumer (agent / LangGraph node)
+client = PrismAPIClient(projector, embedder, host="api.example.com", port=9100, api_key="...")
+response = client.query("shipping policy", top_k=5)
+stacked_vectors = response.vectors  # ready for PrismResonance / reranker
+```
+
+Enterprise HTTP server with auth + metrics:
+
+```bash
+pip install "prismlib-plus[enterprise,cache,fabric]"
+python examples/enterprise_server.py
+```
+
+See [ENTERPRISE.md](ENTERPRISE.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 ### PrismCache — single node, in-process LLM cache
 
@@ -33,7 +96,7 @@ Two components on two machines:
 
 ### PrismLib Micro — cluster cache, health mesh, Blue/Green/Orange failover
 
-Built into `prismlib[fabric]`, zero extra install:
+Built into `prismlib-plus[fabric]`, zero extra install:
 - **ClusterCache** — once any node answers a query, every peer caches it via CHORUS TOKEN_SYNC frames. BLUE and ORANGE nodes billed 0 tokens on warm queries.
 - **AlertManager** — 12 default health rules; fires SIGNAL frame + admin email in <1s when CPU/RAM/disk thresholds are crossed. No scrape interval. No Datadog agent.
 - **Blue/Green/Orange failover** — GREEN is active master, BLUE is warm standby (auto-promotes in ~3s if GREEN goes silent), ORANGE is syncing reserve.
@@ -50,28 +113,34 @@ Built on two open-source InsightIts libraries:
 ## Installation
 
 ```bash
-# Semantic LLM cache only
-pip install "prismlib[cache]"
-
-# With OpenAI embeddings
-pip install "prismlib[cache,cache-openai]"
-
-# With Anthropic/Voyage embeddings
-pip install "prismlib[cache,cache-anthropic]"
-
-# With Ollama (local models)
-pip install "prismlib[cache,cache-ollama]"
+# Semantic LLM cache
+pip install "prismlib-plus[cache]"
 
 # DB driver (app node)
-pip install "prismlib[fabric]"
+pip install "prismlib-plus[fabric]"
+
+# Enterprise PrismAPI (auth, metrics, FastAPI)
+pip install "prismlib-plus[enterprise,cache,fabric]"
 
 # Server Wrapper daemon (DB node — Linux/macOS)
-pip install "prismlib[wrapper]"
-prism-wrapper --config /etc/prism/wrapper.toml
+pip install "prismlib-plus[wrapper]"
+prism-wrapper --grpc-port 50051
 
 # Everything
+pip install "prismlib-plus[all,enterprise]"
+```
+
+**Legacy base package (PyPI, no PrismAPI):** `pip install "prismlib[cache]"` — [prismlib 0.4.0](https://pypi.org/project/prismlib/).
+
+<details>
+<summary>Previous install snippets (prismlib 0.4.0 naming)</summary>
+
+```bash
+pip install "prismlib[cache]"
+pip install "prismlib[fabric]"
 pip install "prismlib[all]"
 ```
+</details>
 
 ---
 
@@ -369,30 +438,24 @@ Live results from Azure Container App (`westus2`, 1 vCPU / 2 GiB, mock LLM basel
 
 > Numbers use a mock LLM (80ms sleep). With real GPT-4o calls (1–3s), latency speedup is 4–13×; token savings are identical.
 
-### PrismDriver — two-node baseline vs local index
+### PrismDriver — two-node baseline vs local index (Azure e2e, 2026-06-29)
 
-Live two-node benchmark (Azure Container Apps `westus2`, 30 users × 60s per phase):
+Latest two-container benchmark (`deploy/azure_driver_run.ps1`, westus2):
 
 | Phase | Path | Avg latency | Queries |
 |-------|------|-------------|---------|
-| **Baseline** (no driver) | App → DB node, network | **142.8 ms** | 3,864 |
-| **Driver** (local index) | App → in-process PrismResonance | **2.0 ms** | 1,479 |
+| **Baseline** | App → DB node over network | **118.5 ms** | 2,653 |
+| **Driver** | App → in-process index | **0.27 ms** | 4,886 |
 
-**70.7× faster · 98.6% latency reduction**
+**439× faster · 99.8% latency reduction** (20 users × 45 s/phase, Python driver mode)
 
-The 98.6% reduction is a direct result of CHORUS Fabric doing its job. The subscription loop streamed 11,000 rows at **26,000 rows/s** from the DB node into the local PrismResonance index before the load test began. By the time the first `/driver/query` hit arrived, there were zero network hops — the answer was already in-process. This is what CHORUS Fabric was designed for: getting tensor data to where the query is, before the query arrives.
+Previous run (2026-06-24): 70.7× / 142.8 ms → 2.0 ms — see `driver_benchmark_20260624_135338.json`.
 
 ```bash
-# Two-node benchmark (requires both container apps running)
 python benchmark/load/run_driver_benchmark.py \
-  --app-url https://prism-benchmark.nicestone-720c6a9b.westus2.azurecontainerapps.io \
-  --db-url  https://prism-wrapper-sim.nicestone-720c6a9b.westus2.azurecontainerapps.io \
-  --users 30 --duration 60
-
-# PrismCache load test
-python benchmark/load/run_benchmark.py \
-  --host https://prism-benchmark.nicestone-720c6a9b.westus2.azurecontainerapps.io \
-  --scenario mixed
+  --app-url https://prism-benchmark.<your-env>.azurecontainerapps.io \
+  --db-url  https://prism-wrapper-sim.<your-env>.azurecontainerapps.io \
+  --users 20 --duration 45
 ```
 
 See [`benchmark/`](benchmark/) for full results JSON, Locust CSV files, and the Azure deploy script.
@@ -451,7 +514,7 @@ CHORUS Fabric is the same protocol used in the CHORUS M2M system — InsightIts'
 
 ---
 
-## PrismLib Micro — Cluster & RAG Layer (v0.4.0)
+## PrismLib Micro — Cluster & RAG Layer
 
 PrismLib Micro is the cluster layer built into `prismlib[fabric]`. It adds three
 capabilities on top of the single-node stack — no extra install, no extra infra.
@@ -542,19 +605,23 @@ For enterprise agreements: **[insightits.info@gmail.com](mailto:insightits.info@
 
 ---
 
-## Enterprise
+## Enterprise (0.7.0)
 
-PrismLib is open source (Apache 2.0) and free to use. If your team needs any of the following, contact us for enterprise pricing:
+Open-source core (Apache 2.0) plus an **optional enterprise layer**:
 
-- **On-premises deployment support** — air-gapped installs, hardened Docker images, SOC 2 documentation
-- **SLA-backed support** — guaranteed response times, incident escalation, dedicated Slack channel
-- **Custom embedding model integration** — fine-tuned domain-specific embedders for higher hit rates in specialized domains (legal, medical, finance, code)
-- **Multi-region CHORUS Fabric topology** — active-active DB node clusters, cross-region WAL fan-out, geo-aware driver routing
-- **Audit logging and compliance exports** — per-query access logs, tenant isolation attestation reports, GDPR data lineage
-- **Professional services** — architecture review, migration from Redis/GPTCache, custom RowVectorizer schemas
+| Feature | Module / doc |
+|---------|----------------|
+| PrismAPI provider & consumer | `prism.api` |
+| API keys, rate limits, audit | `prism.api.auth`, `prism.security` |
+| Prometheus + optional OpenTelemetry | `prism.observability` |
+| mTLS (wrapper gRPC + driver) | `prism.security.tls`, `SECURITY.md` |
+| MCP tool server | `prism.api.mcp` |
+| Helm + Docker | `deploy/helm/`, `deploy/Dockerfile.enterprise` |
+| Runnable server | `examples/enterprise_server.py` |
 
-**Contact: [insightits.info@gmail.com](mailto:insightits.info@gmail.com)**
-**GitHub: [github.com/insightitsGit/prismlib](https://github.com/insightitsGit/prismlib)**
+**Deploy guide:** [ENTERPRISE.md](ENTERPRISE.md) · **Release notes:** [RELEASE_NOTES.md](RELEASE_NOTES.md)
+
+For SLA-backed support, air-gapped installs, and multi-region topologies: **[insightits.info@gmail.com](mailto:insightits.info@gmail.com)**
 
 ---
 
@@ -572,28 +639,18 @@ PrismLib is free and will stay free. If it saved your team money on OpenAI bills
 
 ## Publishing to PyPI
 
-**It is one package** — `prismlib` — published once. The wrapper, driver, and cache are all extras of the same package. Users install what they need:
+This repo publishes as **`prismlib-plus`** (superset of PyPI [`prismlib` 0.4.0](https://pypi.org/project/prismlib/)).
 
 ```bash
-pip install "prismlib[cache]"           # PrismCache only
-pip install "prismlib[wrapper]"         # Server Wrapper (DB node)
-pip install "prismlib[fabric]"          # DLL Driver (App node)
-pip install "prismlib[all]"             # Everything
+pip install "prismlib-plus[cache]"           # PrismCache
+pip install "prismlib-plus[fabric]"          # PrismDriver + cluster
+pip install "prismlib-plus[wrapper]"         # DB-node daemon
+pip install "prismlib-plus[enterprise]"      # PrismAPI + auth + metrics
+pip install "prismlib-plus[all,enterprise]"  # Everything
 ```
 
-**To publish a new version:**
-
-```bash
-# 1. Bump version in pyproject.toml (currently 0.4.0)
-# 2. Build the distribution
-pip install build twine
-python -m build
-
-# 3. Upload to PyPI (use your token from pypi.org/manage/account/token/)
-python -m twine upload dist/* --username __token__ --password pypi-YOUR_TOKEN
-```
-
-That's it. One upload covers all three install variants — PyPI resolves the extras automatically.
+**To publish 0.7.0:** see [RELEASE.md](RELEASE.md).  
+**What's new:** [RELEASE_NOTES.md](RELEASE_NOTES.md) · [CHANGELOG.md](CHANGELOG.md)
 
 ---
 

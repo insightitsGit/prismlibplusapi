@@ -23,7 +23,8 @@ from typing import Optional
 import numpy as np
 
 from prism.lib.fabric import CHORUSFabric, FabricConfig, VectorFrame
-from prism.wrapper.interceptor import WALEvent, RowVectorizer
+from prism.wrapper.interceptor import WALEvent, WALEventType, RowVectorizer
+from prism.wrapper.row_events import RowEventHub, RowEventRecord
 
 logger = logging.getLogger(__name__)
 
@@ -59,14 +60,20 @@ class CHORUSPublisher:
         target_dim: int = 64,
         key_ttl_seconds: float = 300.0,
         publish_batch_size: int = 64,
+        event_hub: Optional[RowEventHub] = None,
     ) -> None:
         self._tenant_id = tenant_id
         self._vectorizer = RowVectorizer(tenant_id=tenant_id, target_dim=target_dim)
         self._key_ttl = key_ttl_seconds
         self._batch_size = publish_batch_size
+        self._hub = event_hub or RowEventHub()
 
         self._drivers: dict[str, DriverEndpoint] = {}
         self._fabrics: dict[str, CHORUSFabric] = {}
+
+    @property
+    def event_hub(self) -> RowEventHub:
+        return self._hub
 
     # ------------------------------------------------------------------
     # Driver registry
@@ -115,8 +122,10 @@ class CHORUSPublisher:
         while True:
             try:
                 event = await asyncio.wait_for(event_queue.get(), timeout=0.05)
-                text_repr, vector = self._vectorizer.vectorize(event)
-                batch.append((event, vector, text_repr))
+                self._publish_row_event(event)
+                if event.event_type != WALEventType.DELETE:
+                    text_repr, vector = self._vectorizer.vectorize(event)
+                    batch.append((event, vector, text_repr))
                 event_queue.task_done()
             except asyncio.TimeoutError:
                 pass
@@ -227,3 +236,20 @@ class CHORUSPublisher:
         await asyncio.gather(*tasks, return_exceptions=True)
         self._fabrics.clear()
         logger.info("CHORUSPublisher: all fabric connections closed.")
+
+    def _publish_row_event(self, event: WALEvent) -> None:
+        """Publish a typed row event to the subscribe hub for drivers."""
+        op = event.event_type.value
+        vector: Optional[list[float]] = None
+        text_repr = ""
+        if event.event_type != WALEventType.DELETE:
+            text_repr, vec = self._vectorizer.vectorize(event)
+            vector = vec.tolist()
+        self._hub.publish(RowEventRecord(
+            event_id=event.event_id,
+            row_id=event.row_id,
+            op=op,
+            text_repr=text_repr,
+            vector=vector,
+            table_name=event.table_name,
+        ))

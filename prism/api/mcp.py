@@ -41,9 +41,12 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import sys
 import uuid
 from typing import Any, Callable, Optional
+
+from prism.api.auth import AuthConfig
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +97,7 @@ class PrismAPIMCPServer:
         tool_description: str = "Search for semantically relevant documents.",
         server_name: str = "prism-api-server",
         server_version: str = "0.1.0",
+        auth: Optional[AuthConfig] = None,
     ) -> None:
         self._provider = provider
         self._handler = handler
@@ -101,29 +105,46 @@ class PrismAPIMCPServer:
         self._tool_description = tool_description
         self._server_name = server_name
         self._server_version = server_version
+        self._auth = auth or self._auth_from_env()
 
     # ------------------------------------------------------------------
     # Tool schema
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _auth_from_env() -> AuthConfig:
+        key = os.environ.get("PRISM_MCP_API_KEY", "").strip()
+        if key:
+            return AuthConfig(api_keys=(key,), require_auth=True)
+        return AuthConfig.from_env(prefix="PRISM_MCP")
+
     def _tool_schema(self) -> dict[str, Any]:
+        props: dict[str, Any] = {
+            "query": {
+                "type": "string",
+                "description": "Natural-language search query.",
+            },
+            "top_k": {
+                "type": "integer",
+                "description": "Maximum number of results.",
+                "default": 10,
+            },
+        }
+        if self._auth.enabled:
+            props["api_key"] = {
+                "type": "string",
+                "description": "PrismAPI key (required when MCP auth is enabled).",
+            }
+        required = ["query"]
+        if self._auth.enabled and self._auth.require_auth:
+            required.append("api_key")
         return {
             "name": self._tool_name,
             "description": self._tool_description,
             "inputSchema": {
                 "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Natural-language search query.",
-                    },
-                    "top_k": {
-                        "type": "integer",
-                        "description": "Maximum number of results.",
-                        "default": 10,
-                    },
-                },
-                "required": ["query"],
+                "properties": props,
+                "required": required,
             },
         }
 
@@ -167,6 +188,11 @@ class PrismAPIMCPServer:
         args = params.get("arguments", {})
         query = str(args.get("query", ""))
         top_k = int(args.get("top_k", 10))
+
+        if self._auth.enabled and self._auth.require_auth:
+            supplied = str(args.get("api_key", ""))
+            if not self._auth.validate_headers({self._auth.header_api_key: supplied}):
+                return _err(id_, -32001, "Unauthorized — invalid or missing api_key")
 
         if not query:
             return _err(id_, -32602, "Missing required argument: query")

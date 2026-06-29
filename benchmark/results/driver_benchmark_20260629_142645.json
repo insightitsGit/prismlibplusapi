@@ -1,0 +1,85 @@
+{
+  "timestamp": "20260629_142645",
+  "app_url": "https://prism-benchmark.gentlesmoke-8bb70e10.westus2.azurecontainerapps.io",
+  "db_url": "https://prism-wrapper-sim.gentlesmoke-8bb70e10.westus2.azurecontainerapps.io",
+  "users": 20,
+  "duration_s": 45,
+  "warmup_rows": 500,
+  "warmup_info": {
+    "rows_loaded": 31000,
+    "index_size": 1000,
+    "elapsed_ms": 121842.99999999348,
+    "throughput_rows_per_s": 254.42577743490935
+  },
+  "baseline_metrics": {
+    "baseline": {
+      "queries": 2675,
+      "avg_latency_ms": 118.61,
+      "source": "db-node-network"
+    },
+    "driver": {
+      "queries": 0,
+      "avg_latency_ms": 0.0,
+      "source": "local-index",
+      "index_size": 1000,
+      "rows_received": 8000
+    },
+    "speedup_factor": 0.0,
+    "wrapper_url": "https://prism-wrapper-sim.gentlesmoke-8bb70e10.westus2.azurecontainerapps.io",
+    "sub_status": {
+      "driver_mode": "python",
+      "index_size": 1000,
+      "is_warm": false,
+      "rows_received": 8000,
+      "rows_deleted": 0,
+      "avg_query_ms": 0.0,
+      "query_count": 0,
+      "sub_connects": 87,
+      "sub_reconnects": 86,
+      "sub_errors": 0,
+      "sub_task_running": true
+    }
+  },
+  "driver_metrics": {
+    "baseline": {
+      "queries": 2675,
+      "avg_latency_ms": 118.61,
+      "source": "db-node-network"
+    },
+    "driver": {
+      "queries": 0,
+      "avg_latency_ms": 0.0,
+      "source": "local-index",
+      "index_size": 1000,
+      "rows_received": 39000
+    },
+    "speedup_factor": 0.0,
+    "wrapper_url": "https://prism-wrapper-sim.gentlesmoke-8bb70e10.westus2.azurecontainerapps.io",
+    "sub_status": {
+      "driver_mode": "python",
+      "index_size": 1000,
+      "is_warm": false,
+      "rows_received": 39000,
+      "rows_deleted": 0,
+      "avg_query_ms": 0.0,
+      "query_count": 0,
+      "sub_connects": 118,
+      "sub_reconnects": 117,
+      "sub_errors": 0,
+      "sub_task_running": true
+    }
+  },
+  "speedup_factor": 0.0,
+  "latency_reduction_pct": 100.0,
+  "driver_mode": "python",
+  "summary": {
+    "baseline_avg_ms": 118.61,
+    "driver_avg_ms": 0.0,
+    "speedup": "0.0x",
+    "latency_reduction": "100.0%",
+    "index_rows": 1000,
+    "warmup_throughput_rows_per_s": 254,
+    "test_config": "20 users x 45s per phase, Azure Container Apps"
+  },
+  "log_dir": "benchmark/results/azure_e2e_logs"
+}

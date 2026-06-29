@@ -76,7 +76,11 @@ class TestPrismDriver:
 
     @pytest.mark.asyncio
     async def test_connect_sets_connected(self) -> None:
-        driver = PrismDriver(DriverConfig(wrapper_host="localhost", wrapper_port=50051))
+        driver = PrismDriver(DriverConfig(
+            wrapper_host="localhost",
+            wrapper_port=50051,
+            allow_insecure=True,
+        ))
         # Python driver attempts gRPC; in stub mode it connects without error
         await driver.connect()
         assert driver.is_connected
@@ -91,14 +95,14 @@ class TestPrismDriver:
 
     @pytest.mark.asyncio
     async def test_context_manager(self) -> None:
-        cfg = DriverConfig(wrapper_host="localhost")
+        cfg = DriverConfig(wrapper_host="localhost", allow_insecure=True)
         async with PrismDriver(cfg) as driver:
             assert driver.is_connected
         assert not driver.is_connected
 
     @pytest.mark.asyncio
     async def test_query_returns_list(self) -> None:
-        cfg = DriverConfig(wrapper_host="localhost")
+        cfg = DriverConfig(wrapper_host="localhost", allow_insecure=True)
         async with PrismDriver(cfg) as driver:
             results = await driver.query(
                 "orders",
@@ -113,7 +117,7 @@ class TestPrismDriver:
 
     @pytest.mark.asyncio
     async def test_write_does_not_raise(self) -> None:
-        cfg = DriverConfig(wrapper_host="localhost")
+        cfg = DriverConfig(wrapper_host="localhost", allow_insecure=True)
         async with PrismDriver(cfg) as driver:
             await driver.write(
                 "orders",
@@ -123,7 +127,7 @@ class TestPrismDriver:
 
     @pytest.mark.asyncio
     async def test_mode_is_python_without_dll(self) -> None:
-        cfg = DriverConfig(wrapper_host="localhost")
+        cfg = DriverConfig(wrapper_host="localhost", allow_insecure=True)
         driver = PrismDriver(cfg)
         await driver.connect()
         # In CI without DLL, mode must be 'python'
@@ -134,7 +138,7 @@ class TestPrismDriver:
     @pytest.mark.asyncio
     async def test_vector_dtype_coercion(self) -> None:
         """Driver should accept float64 input and coerce internally."""
-        cfg = DriverConfig(wrapper_host="localhost")
+        cfg = DriverConfig(wrapper_host="localhost", allow_insecure=True)
         async with PrismDriver(cfg) as driver:
             # float64 input — should not raise
             v64 = np.random.rand(64)

@@ -1,5 +1,15 @@
 # PrismLabPlusAPI — Improvement Roadmap
 
+## ✅ Completed in 0.7.0 (see [RESULTS_AND_IMPROVEMENTS.md](RESULTS_AND_IMPROVEMENTS.md))
+
+- Enterprise tiers: auth, rate limit, audit, Prometheus, optional OTel, mTLS, Helm, Docker
+- PrismAPI provider/consumer, enterprise server + HTTP client, MCP auth gate
+- gRPC WrapperService + Python driver remote Query/Write
+- LocalIndex WAL ops, `is_warm` fix, Azure 2-container driver e2e (439× benchmark)
+- 217+ tests; `deploy/azure_driver_run.ps1`, `BENCHMARK_RESULTS.md`, `CHANGELOG.md`, `RELEASE.md`
+
+---
+
 Honest assessment of what would move this from a strong technical library to a market-ready product.
 Ordered by impact.
 
