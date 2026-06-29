@@ -1,0 +1,51 @@
+{
+  "config": {
+    "model": "all-MiniLM-L6-v2",
+    "corpus_size": 61,
+    "n_queries": 15,
+    "top_k": 5,
+    "target_dim": 64,
+    "embed_dim": 384
+  },
+  "baseline": {
+    "path": "baseline",
+    "n_queries": 15,
+    "top_k": 5,
+    "mean_latency_ms": 25.924260000162274,
+    "p50_latency_ms": 25.400399999853107,
+    "p95_latency_ms": 29.176899999947636,
+    "total_embedding_calls": 90,
+    "mean_embedding_calls_per_query": 6.0,
+    "mean_payload_bytes": 2795.0
+  },
+  "prismapi": {
+    "path": "prismapi",
+    "n_queries": 15,
+    "top_k": 5,
+    "mean_latency_ms": 104.32673333331574,
+    "p50_latency_ms": 107.44510000040464,
+    "p95_latency_ms": 116.63894999946933,
+    "total_embedding_calls": 15,
+    "mean_embedding_calls_per_query": 1.0,
+    "mean_payload_bytes": 1725.6
+  },
+  "comparison": {
+    "latency_speedup_x": 0.25,
+    "embedding_calls_baseline": 90,
+    "embedding_calls_prismapi": 15,
+    "embedding_calls_saved": 75,
+    "embedding_calls_saved_pct": 83.3,
+    "mean_payload_bytes_baseline": 2795,
+    "mean_payload_bytes_prismapi": 1726,
+    "payload_reduction_pct": 38.3,
+    "retrieval_overlap": {
+      "mean_jaccard": 0.41931216931216936,
+      "min_jaccard": 0.1111111111111111,
+      "mean_recall_at_k": 0.5733333333333334,
+      "min_recall_at_k": 0.2,
+      "queries_with_full_jaccard": 0,
+      "mean_recall_at_2k": 0.7733333333333334,
+      "min_recall_at_2k": 0.4
+    }
+  }
+}

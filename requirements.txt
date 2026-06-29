@@ -1,0 +1,20 @@
+# PrismLib — Phase 1 dependencies
+# All packages are OS-agnostic (Linux / macOS / Windows)
+
+# Core math
+numpy>=1.26.0
+
+# ONNX Runtime — CPU-only, no CUDA dependency
+onnxruntime>=1.17.0
+onnx>=1.15.0
+
+# gRPC transport (CHORUS Fabric)
+grpcio>=1.62.0
+grpcio-tools>=1.62.0   # for regenerating protobufs
+
+# Optional: async gRPC support (already bundled with grpcio >= 1.32)
+# grpcio[aio]
+
+# Development / testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

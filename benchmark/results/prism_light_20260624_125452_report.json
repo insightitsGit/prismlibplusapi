@@ -1,0 +1,36 @@
+{
+  "scenario": "light",
+  "host": "https://prism-benchmark.nicestone-720c6a9b.westus2.azurecontainerapps.io",
+  "config": {
+    "users": 20,
+    "spawn_rate": 5,
+    "duration": 60,
+    "seed": 500
+  },
+  "metrics_before": {
+    "total_queries": 4050,
+    "total_hits": 3724,
+    "total_misses": 326,
+    "hit_rate_pct": 91.95,
+    "avg_hit_latency_ms": 28.37,
+    "avg_miss_latency_ms": 97.0,
+    "speedup_factor": 3.4,
+    "total_tokens_saved": 953344,
+    "total_cost_saved_usd": 0.572,
+    "projected_monthly_usd": 411.84,
+    "cache_size": 0
+  },
+  "metrics_after": {
+    "total_queries": 5936,
+    "total_hits": 5402,
+    "total_misses": 534,
+    "hit_rate_pct": 91.0,
+    "avg_hit_latency_ms": 222.99,
+    "avg_miss_latency_ms": 449.62,
+    "speedup_factor": 2.0,
+    "total_tokens_saved": 1374464,
+    "total_cost_saved_usd": 0.8247,
+    "projected_monthly_usd": 593.77,
+    "cache_size": 208
+  }
+}

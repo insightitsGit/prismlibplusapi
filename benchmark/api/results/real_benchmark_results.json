@@ -1,0 +1,99 @@
+{
+  "config": {
+    "model": "all-MiniLM-L6-v2",
+    "corpus_size": 200,
+    "n_queries": 50,
+    "n_trials": 3,
+    "top_k": 5,
+    "target_dim": 64,
+    "embed_dim": 384
+  },
+  "baseline": {
+    "path": "baseline",
+    "n_queries": 50,
+    "n_trials": 3,
+    "top_k": 5,
+    "rtt_ms": {
+      "mean": 6.351705333096713,
+      "p50": 2.040299998043338,
+      "p95": 18.025464998572673,
+      "p99": 23.815766998923205,
+      "std": 6.252568058723367
+    },
+    "server_embed_ms": {
+      "mean": 3.412733333333333,
+      "p50": 0.0,
+      "p95": 12.623
+    },
+    "client_embed_ms": {
+      "mean": 36.783910666587566,
+      "p50": 36.82850000041071,
+      "p95": 44.309419999080994
+    },
+    "total_embedding_calls": 900,
+    "mean_embed_calls_per_query": 6.0,
+    "mean_wire_bytes": 2447.86
+  },
+  "prismapi": {
+    "path": "prismapi",
+    "n_queries": 50,
+    "n_trials": 3,
+    "top_k": 5,
+    "rtt_ms": {
+      "mean": 1.7946080000062163,
+      "p50": 1.592799999343697,
+      "p95": 1.9109600010779102,
+      "p99": 11.22245699920313,
+      "std": 1.4441686088211119
+    },
+    "server_embed_ms": {
+      "mean": 0.0,
+      "p50": 0.0,
+      "p95": 0.0
+    },
+    "client_embed_ms": {
+      "mean": 0.0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "note": "consumer does not re-embed results"
+    },
+    "total_embedding_calls": 150,
+    "mean_embed_calls_per_query": 1.0,
+    "mean_wire_bytes": 2145.56,
+    "target_dim": 64
+  },
+  "quality": {
+    "mean_jaccard": 0.489,
+    "min_jaccard": 0.111,
+    "mean_recall_at_k": 0.632,
+    "min_recall_at_k": 0.2,
+    "mean_recall_at_2k": 0.732,
+    "min_recall_at_2k": 0.4
+  },
+  "concurrent": {
+    "baseline": {
+      "label": "baseline",
+      "n_requests": 100,
+      "concurrency": 10,
+      "total_elapsed_s": 0.53,
+      "throughput_rps": 187.1,
+      "mean_latency_ms": 23.6,
+      "p50_ms": 3.0,
+      "p95_ms": 10.7,
+      "p99_ms": 517.1,
+      "errors": 0
+    },
+    "prismapi": {
+      "label": "prismapi",
+      "n_requests": 100,
+      "concurrency": 10,
+      "total_elapsed_s": 0.77,
+      "throughput_rps": 130.7,
+      "mean_latency_ms": 3.3,
+      "p50_ms": 3.1,
+      "p95_ms": 5.3,
+      "p99_ms": 6.6,
+      "errors": 0
+    }
+  }
+}

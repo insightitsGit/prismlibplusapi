@@ -1,0 +1,41 @@
+{
+  "timestamp": "20260624_135338",
+  "app_url": "https://prism-benchmark.nicestone-720c6a9b.westus2.azurecontainerapps.io",
+  "db_url": "https://prism-wrapper-sim.nicestone-720c6a9b.westus2.azurecontainerapps.io",
+  "users": 30,
+  "duration_s": 60,
+  "warmup_rows": 1000,
+  "warmup_info": {
+    "rows_loaded": 11000,
+    "index_size": 11000,
+    "elapsed_ms": 422.0,
+    "throughput_rows_per_s": 26066.0
+  },
+  "baseline_metrics": {
+    "baseline": {
+      "queries": 3864,
+      "avg_latency_ms": 142.83,
+      "source": "db-node-network"
+    }
+  },
+  "driver_metrics": {
+    "driver": {
+      "queries": 1479,
+      "avg_latency_ms": 2.02,
+      "source": "local-index",
+      "index_size": 8000,
+      "rows_received": 8000
+    }
+  },
+  "speedup_factor": 70.7,
+  "latency_reduction_pct": 98.6,
+  "summary": {
+    "baseline_avg_ms": 142.83,
+    "driver_avg_ms": 2.02,
+    "speedup": "70.7x",
+    "latency_reduction": "98.6%",
+    "index_rows": 11000,
+    "warmup_throughput_rows_per_s": 26066,
+    "test_config": "30 users x 60s per phase, Azure Container Apps westus2"
+  }
+}

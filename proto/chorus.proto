@@ -1,0 +1,182 @@
+// CHORUS Fabric — gRPC service definition
+// Topology:
+//   [DB Node] Server Wrapper  ──CHORUS──▶  [App Node] DLL Driver
+//   [App Node] DLL Driver     ──CHORUS──▶  [DB Node] Server Wrapper
+//
+// Compile with:
+//   python -m grpc_tools.protoc -I./proto \
+//     --python_out=prism/wrapper/proto \
+//     --grpc_python_out=prism/wrapper/proto \
+//     proto/chorus.proto
+//
+//   For C# (NuGet: Google.Protobuf, Grpc.Tools):
+//     dotnet grpc add-file proto/chorus.proto
+//
+//   For Go:
+//     protoc --go_out=. --go-grpc_out=. proto/chorus.proto
+
+syntax = "proto3";
+
+package chorus;
+option csharp_namespace = "Prism.Chorus";
+option go_package = "github.com/insightitsGit/prismlib/chorus";
+option java_package = "io.insightits.prism.chorus";
+option java_outer_classname = "ChorusProto";
+
+// ---------------------------------------------------------------------------
+// Wire frames
+// ---------------------------------------------------------------------------
+
+// Raw binary float32 vector payload (zero-copy, no JSON overhead).
+// The payload bytes encode a VectorFrame (see prism/lib/fabric.py):
+//   [key_id: 36B][seq: 8B][watermark: 32B][N: 4B][dim: 4B][float32*N*dim]
+message VectorPayload {
+  bytes  frame      = 1;   // serialised VectorFrame binary blob
+  string stream_id  = 2;   // UUID for this streaming session
+  int64  timestamp  = 3;   // Unix epoch milliseconds
+  string tenant_id  = 4;   // tenant routing — empty = passthrough
+}
+
+message VectorAck {
+  string stream_id = 1;
+  int64  seq       = 2;
+  bool   accepted  = 3;
+  string error_msg = 4;   // empty on success
+}
+
+// ---------------------------------------------------------------------------
+// Server Wrapper → DLL Driver (push path)
+// ---------------------------------------------------------------------------
+
+// One logical row ingested from the DB, vectorized and projected.
+message RowEvent {
+  string   event_id   = 1;   // UUID
+  string   table_name = 2;
+  string   tenant_id  = 3;
+  EventOp  op         = 4;
+  int64    timestamp  = 5;   // epoch milliseconds
+  bytes    vector     = 6;   // float32 LE, projected to 64-d
+  string   text_repr  = 7;   // human-readable for debugging / RAG
+  bytes    watermark  = 8;   // HMAC-SHA256 chain of custody
+  string   key_id     = 9;   // cipher key that encrypted `vector`
+}
+
+enum EventOp {
+  INSERT  = 0;
+  UPDATE  = 1;
+  DELETE  = 2;
+  TRUNCATE = 3;
+  SNAPSHOT = 4;   // initial bulk-load event
+}
+
+message RowEventAck {
+  string event_id = 1;
+  bool   accepted = 2;
+  string error    = 3;
+}
+
+// ---------------------------------------------------------------------------
+// DLL Driver → Server Wrapper (query / write path)
+// ---------------------------------------------------------------------------
+
+message QueryRequest {
+  string   request_id  = 1;
+  string   tenant_id   = 2;
+  string   table_name  = 3;
+  bytes    query_vector = 4;   // float32 LE, 64-d projected
+  int32    top_k        = 5;
+  float    threshold    = 6;   // minimum similarity [0, 1]
+  string   sql_filter   = 7;   // optional WHERE clause passthrough
+  int64    timestamp    = 8;
+}
+
+message QueryResponse {
+  string         request_id = 1;
+  repeated Match matches    = 2;
+  int64          latency_us = 3;   // server-side latency microseconds
+  string         error      = 4;
+}
+
+message Match {
+  string event_id  = 1;
+  string row_id    = 2;
+  float  score     = 3;
+  string text_repr = 4;
+  bytes  vector    = 5;   // float32 LE — optional, only when requested
+}
+
+message WriteRequest {
+  string   request_id  = 1;
+  string   tenant_id   = 2;
+  string   table_name  = 3;
+  bytes    vector      = 4;   // float32 LE, 64-d
+  string   text_repr   = 5;
+  map<string, string> metadata = 6;
+  int64    timestamp   = 7;
+}
+
+message WriteAck {
+  string request_id = 1;
+  string row_id     = 2;
+  bool   accepted   = 3;
+  string error      = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Handshake & health
+// ---------------------------------------------------------------------------
+
+message HelloRequest {
+  string node_id     = 1;   // driver or wrapper UUID
+  string node_type   = 2;   // "driver" | "wrapper"
+  string version     = 3;   // semver
+  repeated string capabilities = 4;   // e.g. ["wal", "query", "write"]
+}
+
+message HelloResponse {
+  bool   accepted    = 1;
+  string session_id  = 2;   // assigned by the wrapper
+  string error       = 3;
+}
+
+message HealthRequest {
+  string node_id = 1;
+}
+
+message HealthResponse {
+  bool   ok      = 1;
+  string status  = 2;   // human readable
+  int64  uptime_seconds = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Services
+// ---------------------------------------------------------------------------
+
+// Raw float32 streaming (used by fabric.py for low-level tensor transport).
+service VectorStream {
+  rpc StreamVectors(stream VectorPayload) returns (stream VectorAck);
+  rpc SendVector(VectorPayload) returns (VectorAck);
+}
+
+// Server Wrapper service (runs on DB node).
+// DLL Drivers connect here to receive pushed row events and issue queries.
+service WrapperService {
+  // Handshake — driver registers itself; wrapper validates version.
+  rpc Hello(HelloRequest) returns (HelloResponse);
+
+  // Wrapper pushes vectorized row events to the driver (server-side streaming).
+  rpc Subscribe(HelloRequest) returns (stream RowEvent);
+
+  // Driver sends acks back for consumed row events (client-side streaming).
+  rpc AckEvents(stream RowEventAck) returns (VectorAck);
+
+  // Driver asks wrapper to run a similarity query against the DB index.
+  rpc Query(QueryRequest) returns (QueryResponse);
+
+  // Driver sends a write-behind write to the DB via wrapper.
+  rpc Write(WriteRequest) returns (WriteAck);
+
+  // Health check — both sides can call this.
+  rpc Health(HealthRequest) returns (HealthResponse);
+}

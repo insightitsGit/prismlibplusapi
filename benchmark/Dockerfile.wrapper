@@ -1,0 +1,22 @@
+FROM mcr.microsoft.com/devcontainers/python:3.12
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY benchmark/wrapper_sim/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY benchmark/wrapper_sim/ ./benchmark/wrapper_sim/
+
+ENV PYTHONUNBUFFERED=1
+ENV PRISM_TENANT_ID=benchmark-db
+ENV PRISM_TARGET_DIM=64
+
+EXPOSE 8001
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s \
+  CMD curl -f http://localhost:8001/health || exit 1
+
+CMD ["python", "-m", "benchmark.wrapper_sim.main"]

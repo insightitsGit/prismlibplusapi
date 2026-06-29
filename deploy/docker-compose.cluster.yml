@@ -1,0 +1,113 @@
+version: "3.9"
+
+# =============================================================================
+# Local 3-node cluster — GREEN + BLUE on network A, ORANGE on network B
+# Mimics the Azure topology: same-pod (bridge) vs cross-network
+#
+# Usage:
+#   docker compose -f deploy/docker-compose.cluster.yml up --build
+#   # Wait for all nodes to print "ready"
+#   python benchmark/cluster/run_cluster_benchmark.py \
+#     --green  http://localhost:8081 \
+#     --blue   http://localhost:8082 \
+#     --orange http://localhost:8083
+# =============================================================================
+
+networks:
+  net_ab:           # GREEN + BLUE — same network (same-pod simulation)
+    driver: bridge
+  net_c:            # ORANGE — separate network (cross-network simulation)
+    driver: bridge
+
+services:
+  # ──────────────────────────────────────────────────────────────────────────
+  # GREEN — active master, same-pod network
+  # ──────────────────────────────────────────────────────────────────────────
+  node-green:
+    build:
+      context: ../benchmark/cluster
+      dockerfile: Dockerfile
+    container_name: node-green
+    hostname: node-green
+    networks:
+      - net_ab
+      - net_c        # cross-link so ORANGE can reach GREEN too
+    ports:
+      - "8081:8080"
+    environment:
+      NODE_ID:       node-green
+      NODE_ROLE:     green
+      NETWORK_LABEL: same-pod
+      PEERS: >
+        {"blue":"http://node-blue:8080","orange":"http://node-orange:8080"}
+      ADMIN_EMAIL:   ""
+      TOKEN_BUDGET:  "100000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # BLUE — warm standby, same-pod network
+  # ──────────────────────────────────────────────────────────────────────────
+  node-blue:
+    build:
+      context: ../benchmark/cluster
+      dockerfile: Dockerfile
+    container_name: node-blue
+    hostname: node-blue
+    networks:
+      - net_ab
+      - net_c
+    ports:
+      - "8082:8080"
+    environment:
+      NODE_ID:       node-blue
+      NODE_ROLE:     blue
+      NETWORK_LABEL: same-pod
+      PEERS: >
+        {"green":"http://node-green:8080","orange":"http://node-orange:8080"}
+      ADMIN_EMAIL:   ""
+      TOKEN_BUDGET:  "100000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      node-green:
+        condition: service_healthy
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # ORANGE — syncing reserve, separate network (cross-network simulation)
+  # ──────────────────────────────────────────────────────────────────────────
+  node-orange:
+    build:
+      context: ../benchmark/cluster
+      dockerfile: Dockerfile
+    container_name: node-orange
+    hostname: node-orange
+    networks:
+      - net_c
+    ports:
+      - "8083:8080"
+    environment:
+      NODE_ID:       node-orange
+      NODE_ROLE:     orange
+      NETWORK_LABEL: cross-network
+      PEERS: >
+        {"green":"http://node-green:8080","blue":"http://node-blue:8080"}
+      ADMIN_EMAIL:   ""
+      TOKEN_BUDGET:  "100000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      node-green:
+        condition: service_healthy

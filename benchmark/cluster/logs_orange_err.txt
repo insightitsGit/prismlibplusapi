@@ -1,0 +1,80 @@
+INFO:     Started server process [36620]
+INFO:     Waiting for application startup.
+{"time":"2026-06-24 21:47:01,285","level":"INFO","node":"node-orange","msg":"Node node-orange starting as ORANGE (cross-network)"}
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8083 (Press CTRL+C to quit)
+{"time":"2026-06-24 21:47:01,783","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:01,787","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:02,011","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=891.8ms"}
+{"time":"2026-06-24 21:47:02,065","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=899.5ms"}
+{"time":"2026-06-24 21:47:04,526","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:04,531","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:04,533","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=409.1ms"}
+{"time":"2026-06-24 21:47:04,534","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=348.2ms"}
+{"time":"2026-06-24 21:47:07,044","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=381.3ms"}
+{"time":"2026-06-24 21:47:07,046","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:07,047","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=399.8ms"}
+{"time":"2026-06-24 21:47:07,049","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:09,575","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:09,576","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=416.3ms"}
+{"time":"2026-06-24 21:47:09,578","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=418.4ms"}
+{"time":"2026-06-24 21:47:09,578","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:12,060","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=388.9ms"}
+{"time":"2026-06-24 21:47:12,061","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=373.9ms"}
+{"time":"2026-06-24 21:47:12,065","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:12,066","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:14,545","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=392.7ms"}
+{"time":"2026-06-24 21:47:14,547","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=378.7ms"}
+{"time":"2026-06-24 21:47:14,549","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:14,552","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:15,385","level":"INFO","node":"node-orange","msg":"CHORUS TOKEN_SYNC from node-green (green) transit=219.1ms"}
+{"time":"2026-06-24 21:47:15,699","level":"INFO","node":"node-orange","msg":"CHORUS TOKEN_SYNC from node-green (green) transit=228.4ms"}
+{"time":"2026-06-24 21:47:15,989","level":"INFO","node":"node-orange","msg":"CHORUS TOKEN_SYNC from node-green (green) transit=205.5ms"}
+{"time":"2026-06-24 21:47:16,308","level":"INFO","node":"node-orange","msg":"CHORUS TOKEN_SYNC from node-green (green) transit=234.2ms"}
+{"time":"2026-06-24 21:47:17,076","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:17,078","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:17,079","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=413.9ms"}
+{"time":"2026-06-24 21:47:17,080","level":"INFO","node":"node-orange","msg":"CHORUS TOKEN_SYNC from node-green (green) transit=687.8ms"}
+{"time":"2026-06-24 21:47:17,081","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=368.7ms"}
+{"time":"2026-06-24 21:47:19,569","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:19,572","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:19,575","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=419.0ms"}
+{"time":"2026-06-24 21:47:19,576","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=371.5ms"}
+{"time":"2026-06-24 21:47:22,041","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:22,043","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=354.1ms"}
+{"time":"2026-06-24 21:47:22,043","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:22,044","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=354.6ms"}
+{"time":"2026-06-24 21:47:23,324","level":"INFO","node":"node-orange","msg":"CHORUS SIGNAL from node-green (green) transit=193.0ms"}
+{"time":"2026-06-24 21:47:23,325","level":"WARNING","node":"node-orange","msg":"SIGNAL [WARNING] from node-green: cpu_high — Benchmark injected: CPU 92% on node-green"}
+{"time":"2026-06-24 21:47:24,413","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:24,529","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:24,532","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=379.6ms"}
+{"time":"2026-06-24 21:47:27,036","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:27,430","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:27,435","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (blue) transit=802.6ms"}
+{"time":"2026-06-24 21:47:27,435","level":"INFO","node":"node-orange","msg":"CHORUS SIGNAL from node-blue (green) transit=344.3ms"}
+{"time":"2026-06-24 21:47:27,435","level":"WARNING","node":"node-orange","msg":"SIGNAL [WARNING] from node-blue: failover — node-blue promoted GREEN after 3.8s silence"}
+{"time":"2026-06-24 21:47:27,436","level":"INFO","node":"node-orange","msg":"Cluster topology change: new GREEN = node-blue"}
+{"time":"2026-06-24 21:47:27,812","level":"INFO","node":"node-orange","msg":"CHORUS SIGNAL from node-blue (green) transit=372.5ms"}
+{"time":"2026-06-24 21:47:27,812","level":"WARNING","node":"node-orange","msg":"SIGNAL [WARNING] from node-blue: failover_triggered — GREEN node silent 3.8s. node-blue is now active master."}
+{"time":"2026-06-24 21:47:28,166","level":"INFO","node":"node-orange","msg":"CHORUS TOKEN_SYNC from node-green (green) transit=273.2ms"}
+{"time":"2026-06-24 21:47:28,552","level":"INFO","node":"node-orange","msg":"CHORUS TOKEN_SYNC from node-green (green) transit=302.2ms"}
+{"time":"2026-06-24 21:47:28,886","level":"INFO","node":"node-orange","msg":"CHORUS TOKEN_SYNC from node-green (green) transit=248.1ms"}
+{"time":"2026-06-24 21:47:29,210","level":"INFO","node":"node-orange","msg":"CHORUS TOKEN_SYNC from node-green (green) transit=238.7ms"}
+{"time":"2026-06-24 21:47:29,855","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:29,857","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:29,857","level":"INFO","node":"node-orange","msg":"CHORUS TOKEN_SYNC from node-green (green) transit=562.8ms"}
+{"time":"2026-06-24 21:47:29,858","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (green) transit=309.2ms"}
+{"time":"2026-06-24 21:47:30,498","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=226.2ms"}
+{"time":"2026-06-24 21:47:32,308","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (green) transit=353.3ms"}
+{"time":"2026-06-24 21:47:32,312","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:32,314","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:32,980","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=364.6ms"}
+{"time":"2026-06-24 21:47:34,781","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:34,809","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:34,812","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (green) transit=386.4ms"}
+{"time":"2026-06-24 21:47:35,387","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=283.8ms"}
+{"time":"2026-06-24 21:47:37,328","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-blue (green) transit=421.2ms"}
+{"time":"2026-06-24 21:47:37,331","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8081/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:37,333","level":"INFO","node":"httpx","msg":"HTTP Request: POST http://127.0.0.1:8082/chorus/ingest "HTTP/1.1 200 OK""}
+{"time":"2026-06-24 21:47:37,802","level":"INFO","node":"node-orange","msg":"CHORUS HEALTH from node-green (green) transit=316.7ms"}

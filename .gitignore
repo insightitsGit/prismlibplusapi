@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.dylib
+*.dll
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.env
+*.env
+
+# C++ build
+build/ffi/
+CMakeCache.txt
+CMakeFiles/
+*.cmake
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Azure / secrets
+*.tfstate
+*.tfstate.backup
+.terraform/
+azure.env
+benchmark/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+logs/
+
+# SQLite cache files (dev only)
+*.db
+*.sqlite
+
+# OS
+.DS_Store
+Thumbs.db

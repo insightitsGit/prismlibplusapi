@@ -1,0 +1,89 @@
+<svg viewBox="0 0 760 560" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
+  <title>PrismLib three-layer request flow</title>
+  <desc>A request passes through PrismCache, PrismDriver, then the LLM, with the answer broadcast over the CHORUS mesh to other cluster nodes.</desc>
+
+  <rect x="0" y="0" width="760" height="560" fill="#ffffff"/>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrowAccent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6366f1"/>
+    </marker>
+  </defs>
+
+  <!-- Request in -->
+  <rect x="40" y="36" width="150" height="46" rx="10" fill="#f3f4f6" stroke="#d1d5db"/>
+  <text x="115" y="58" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">User request</text>
+  <text x="115" y="74" text-anchor="middle" font-size="11" fill="#6b7280">"refund policy?"</text>
+
+  <!-- Layer 1: PrismCache -->
+  <rect x="270" y="24" width="220" height="70" rx="12" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="380" y="50" text-anchor="middle" font-size="15" font-weight="700" fill="#6366f1">1 · PrismCache</text>
+  <text x="380" y="69" text-anchor="middle" font-size="11.5" fill="#111827">semantic cache · 91–96% hit</text>
+  <text x="380" y="84" text-anchor="middle" font-size="11" fill="#6b7280">hit → return instantly, $0</text>
+
+  <!-- hit return loop -->
+  <path d="M490,42 H560 V120 H115 V90" fill="none" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrowAccent)"/>
+  <text x="563" y="86" font-size="10.5" fill="#6366f1">9 / 10 stop here</text>
+
+  <!-- request -> cache -->
+  <line x1="192" y1="59" x2="266" y2="59" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- miss down -->
+  <line x1="380" y1="96" x2="380" y2="150" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="392" y="124" font-size="10.5" fill="#6b7280">miss</text>
+
+  <!-- Layer 2: PrismDriver -->
+  <rect x="270" y="152" width="220" height="70" rx="12" fill="#f3f4f6" stroke="#d1d5db"/>
+  <text x="380" y="178" text-anchor="middle" font-size="15" font-weight="700" fill="#111827">2 · PrismDriver</text>
+  <text x="380" y="197" text-anchor="middle" font-size="11.5" fill="#111827">WAL hot-path context</text>
+  <text x="380" y="212" text-anchor="middle" font-size="11" fill="#6b7280">98.6% latency reduction</text>
+
+  <!-- driver <-> db -->
+  <line x1="490" y1="187" x2="600" y2="187" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <rect x="600" y="164" width="120" height="46" rx="10" fill="#f3f4f6" stroke="#d1d5db"/>
+  <text x="660" y="191" text-anchor="middle" font-size="12.5" fill="#111827">Database</text>
+
+  <!-- driver down to LLM -->
+  <line x1="380" y1="224" x2="380" y2="278" stroke="#6b7280" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- LLM -->
+  <rect x="290" y="280" width="180" height="56" rx="12" fill="#f3f4f6" stroke="#d1d5db"/>
+  <text x="380" y="305" text-anchor="middle" font-size="14" font-weight="600" fill="#111827">LLM call (once)</text>
+  <text x="380" y="324" text-anchor="middle" font-size="11" fill="#6b7280">answer cached on return</text>
+
+  <!-- LLM down to mesh -->
+  <line x1="380" y1="338" x2="380" y2="384" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arrowAccent)"/>
+  <text x="392" y="366" font-size="10.5" fill="#6366f1">broadcast</text>
+
+  <!-- Layer 3: CHORUS mesh -->
+  <rect x="40" y="390" width="680" height="150" rx="14" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="380" y="414" text-anchor="middle" font-size="15" font-weight="700" fill="#6366f1">3 · PrismLib Micro — CHORUS mesh</text>
+  <text x="380" y="431" text-anchor="middle" font-size="11" fill="#6b7280">+76% token savings cluster-wide · ~3–4s failover · &lt;1s alerts</text>
+
+  <!-- nodes -->
+  <g>
+    <rect x="90" y="446" width="160" height="76" rx="10" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+    <text x="170" y="472" text-anchor="middle" font-size="13" font-weight="700" fill="#16a34a">GREEN</text>
+    <text x="170" y="490" text-anchor="middle" font-size="10.5" fill="#6b7280">active</text>
+    <text x="170" y="508" text-anchor="middle" font-size="10.5" fill="#111827">answered + shares</text>
+  </g>
+  <g>
+    <rect x="300" y="446" width="160" height="76" rx="10" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+    <text x="380" y="472" text-anchor="middle" font-size="13" font-weight="700" fill="#2563eb">BLUE</text>
+    <text x="380" y="490" text-anchor="middle" font-size="10.5" fill="#6b7280">warm standby</text>
+    <text x="380" y="508" text-anchor="middle" font-size="10.5" fill="#111827">gets answer free</text>
+  </g>
+  <g>
+    <rect x="510" y="446" width="160" height="76" rx="10" fill="#ffffff" stroke="#ea580c" stroke-width="2"/>
+    <text x="590" y="472" text-anchor="middle" font-size="13" font-weight="700" fill="#ea580c">ORANGE</text>
+    <text x="590" y="490" text-anchor="middle" font-size="10.5" fill="#6b7280">syncing reserve</text>
+    <text x="590" y="508" text-anchor="middle" font-size="10.5" fill="#111827">gets answer free</text>
+  </g>
+
+  <!-- mesh links -->
+  <line x1="250" y1="484" x2="300" y2="484" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <line x1="460" y1="484" x2="510" y2="484" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="4 3"/>
+</svg>

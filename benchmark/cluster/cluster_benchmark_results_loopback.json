@@ -1,0 +1,208 @@
+{
+  "tokens": {
+    "queries": [
+      {
+        "query": "What is PrismLib?",
+        "target": "green",
+        "source": "llm_call",
+        "tokens_used": 61,
+        "tokens_saved": 28,
+        "compressed": 28,
+        "latency_ms": 297.0,
+        "savings_type": "compression"
+      },
+      {
+        "query": "How does CHORUS Fabric work?",
+        "target": "green",
+        "source": "llm_call",
+        "tokens_used": 75,
+        "tokens_saved": 22,
+        "compressed": 22,
+        "latency_ms": 312.0,
+        "savings_type": "compression"
+      },
+      {
+        "query": "Explain context compression.",
+        "target": "green",
+        "source": "llm_call",
+        "tokens_used": 67,
+        "tokens_saved": 28,
+        "compressed": 28,
+        "latency_ms": 297.0,
+        "savings_type": "compression"
+      },
+      {
+        "query": "What is Blue/Green/Orange failover?",
+        "target": "green",
+        "source": "llm_call",
+        "tokens_used": 64,
+        "tokens_saved": 22,
+        "compressed": 22,
+        "latency_ms": 313.0,
+        "savings_type": "compression"
+      },
+      {
+        "query": "How does token deduplication work?",
+        "target": "green",
+        "source": "llm_call",
+        "tokens_used": 61,
+        "tokens_saved": 30,
+        "compressed": 30,
+        "latency_ms": 781.0,
+        "savings_type": "compression"
+      },
+      {
+        "query": "What is PrismLib?",
+        "target": "blue",
+        "source": "cluster_cache (from node-green)",
+        "tokens_used": 0,
+        "tokens_saved": 61,
+        "compressed": 0,
+        "latency_ms": 0.0,
+        "savings_type": "cluster_cache"
+      },
+      {
+        "query": "How does CHORUS Fabric work?",
+        "target": "orange",
+        "source": "cluster_cache (from node-green)",
+        "tokens_used": 0,
+        "tokens_saved": 75,
+        "compressed": 0,
+        "latency_ms": 0.0,
+        "savings_type": "cluster_cache"
+      }
+    ],
+    "node_totals": {
+      "green": {
+        "node_id": "node-green",
+        "role": "green",
+        "network": "same-pod",
+        "tokens_billed": 328,
+        "tokens_cached_local": 0,
+        "tokens_cached_cluster": 0,
+        "tokens_compressed": 130,
+        "tokens_deduped": 0,
+        "total_saved": 130,
+        "savings_pct": 28.4,
+        "estimated_cost_usd": 0.0016,
+        "estimated_savings_usd": 0.0006,
+        "llm_calls_made": 5,
+        "llm_calls_avoided": 0,
+        "cluster_cache_size": 5
+      },
+      "blue": {
+        "node_id": "node-blue",
+        "role": "blue",
+        "network": "same-pod",
+        "tokens_billed": 0,
+        "tokens_cached_local": 0,
+        "tokens_cached_cluster": 61,
+        "tokens_compressed": 0,
+        "tokens_deduped": 0,
+        "total_saved": 61,
+        "savings_pct": 100.0,
+        "estimated_cost_usd": 0.0,
+        "estimated_savings_usd": 0.0003,
+        "llm_calls_made": 0,
+        "llm_calls_avoided": 1,
+        "cluster_cache_size": 5
+      },
+      "orange": {
+        "node_id": "node-orange",
+        "role": "orange",
+        "network": "cross-network",
+        "tokens_billed": 0,
+        "tokens_cached_local": 0,
+        "tokens_cached_cluster": 75,
+        "tokens_compressed": 0,
+        "tokens_deduped": 0,
+        "total_saved": 75,
+        "savings_pct": 100.0,
+        "estimated_cost_usd": 0.0,
+        "estimated_savings_usd": 0.0004,
+        "llm_calls_made": 0,
+        "llm_calls_avoided": 1,
+        "cluster_cache_size": 5
+      }
+    }
+  },
+  "chorus": {
+    "green": {
+      "node_id": "node-green",
+      "network": "same-pod",
+      "frames_sent": 8,
+      "frames_received": 6,
+      "avg_latency_ms": 38.13,
+      "min_latency_ms": 0.0,
+      "max_latency_ms": 469.0,
+      "p99_latency_ms": 469.0
+    },
+    "blue": {
+      "node_id": "node-blue",
+      "network": "same-pod",
+      "frames_sent": 3,
+      "frames_received": 11,
+      "avg_latency_ms": 33.83,
+      "min_latency_ms": 0.0,
+      "max_latency_ms": 94.0,
+      "p99_latency_ms": 0
+    },
+    "orange": {
+      "node_id": "node-orange",
+      "network": "cross-network",
+      "frames_sent": 3,
+      "frames_received": 11,
+      "avg_latency_ms": 15.5,
+      "min_latency_ms": 0.0,
+      "max_latency_ms": 62.0,
+      "p99_latency_ms": 0
+    }
+  },
+  "alerts": {
+    "alert_propagation_ms": {
+      "blue": 708.8,
+      "orange": 711.0
+    },
+    "fired_at": 1782362843.130606
+  },
+  "failover": {
+    "failover_detected_ms": 3965.3,
+    "failover_duration_ms": null,
+    "failovers_triggered": 1,
+    "new_green": "http://127.0.0.1:8082"
+  },
+  "compression": {
+    "queries": [
+      {
+        "query": "What is PrismLib?",
+        "tokens_used": 71,
+        "tokens_compressed": 126,
+        "compression_pct": 64.0
+      },
+      {
+        "query": "How does CHORUS Fabric work?",
+        "tokens_used": 85,
+        "tokens_compressed": 118,
+        "compression_pct": 58.1
+      },
+      {
+        "query": "Explain context compression.",
+        "tokens_used": 75,
+        "tokens_compressed": 128,
+        "compression_pct": 63.1
+      },
+      {
+        "query": "What is Blue/Green/Orange failover?",
+        "tokens_used": 84,
+        "tokens_compressed": 116,
+        "compression_pct": 58.0
+      },
+      {
+        "query": "How does token deduplication work?",
+        "tokens_used": 81,
+        "tokens_compressed": 116,
+        "compression_pct": 58.9
+      }
+    ]
+  }
+}
