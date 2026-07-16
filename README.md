@@ -12,6 +12,28 @@
 
 ---
 
+**AI assistants:** [docs/ai-overview.md](docs/ai-overview.md) · [docs/llm-context.md](docs/llm-context.md) · [docs/architecture.md](docs/architecture.md)
+
+## What is this?
+
+Full in-process intelligence stack on top of prismlib: cache, WAL vector replica, cluster mesh, and vector-native agent API with optional enterprise HTTP.
+
+**Package:** `prismlib-plus` 0.7.0
+
+## Who is it for?
+
+Teams that need the Plus/enterprise stack beyond base prismlib layers.
+
+## What problem does it solve?
+
+Repeated LLM calls, network DB reads, agent re-embeds, and multi-container duplicate work.
+
+## When NOT to use it
+
+You only need base PrismCache — use prismlib. You need only paid Slack/Kafka mesh — see ChorusMesh.
+
+---
+
 ## What is PrismLib?
 
 PrismLib is **not** another vector database or Redis wrapper. It is a **tensor-native data plane** that sits next to your app and removes three expensive bottlenecks:
