@@ -1,14 +1,14 @@
 # PrismLib Plus (`prismlib-plus`)
 
-[![PyPI — prismlib (base)](https://img.shields.io/badge/pypi-prismlib_0.4.0-blue.svg)](https://pypi.org/project/prismlib/)
+[![PyPI — prismlib-plus](https://img.shields.io/badge/pypi-prismlib--plus_0.8.0-blue.svg)](https://pypi.org/project/prismlib-plus/)
 [![Version](https://img.shields.io/badge/version-0.8.0-green.svg)](RELEASE_NOTES.md)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://pypi.org/project/prismlib/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://pypi.org/project/prismlib-plus/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![GitHub](https://img.shields.io/badge/github-insightitsGit%2Fprismlib-black?logo=github)](https://github.com/insightitsGit/prismlib)
+[![GitHub](https://img.shields.io/badge/github-insightitsGit%2Fprismlibplusapi-black?logo=github)](https://github.com/insightitsGit/prismlibplusapi)
 
 **The in-process intelligence stack for LLM applications** — semantic cache, WAL-streamed vector replica, multi-node cluster mesh, and a vector-native agent API with enterprise auth and observability.
 
-> **Release notes:** [RELEASE_NOTES.md](RELEASE_NOTES.md) · **PyPI:** [`prismlib` 0.4.0](https://pypi.org/project/prismlib/) (base) → **`prismlib-plus` 0.8.0** (this repo, full stack)
+> **Release notes:** [RELEASE_NOTES.md](RELEASE_NOTES.md) · **PyPI:** [`prismlib-plus` 0.8.0](https://pypi.org/project/prismlib-plus/) (this repo) · base [`prismlib` 0.4.0](https://pypi.org/project/prismlib/)
 
 ---
 
@@ -51,7 +51,7 @@ Everything runs **in-process** on your machines. Optional extras add the DB-node
 
 | Layer | One-line description | Azure-validated headline | Extra |
 |-------|---------------------|--------------------------|-------|
-| **PrismCache** | Wrap any LLM call; similar queries return cached answers | **91–96% hit rate** under load | `[cache]` |
+| **PrismCache** | Wrap any LLM call; similar queries return cached answers; selective invalidation for corrections | **91–96% hit rate** under load | `[cache]` |
 | **PrismDriver** | Subscribe to DB WAL; query a local index instead of the network | **439× faster reads** (118ms → 0.27ms) | `[fabric]` |
 | **PrismAPI** | HTTP/CHORUS API — pre-projected vectors for agents & RAG | 83% fewer consumer embed calls (design) | `[enterprise]` |
 | **PrismLib Micro** | Cluster-wide token cache, alerts, Blue/Green/Orange failover | **76% fewer tokens** cluster-wide | `[fabric]` |
@@ -109,6 +109,11 @@ See [ENTERPRISE.md](ENTERPRISE.md) and [RELEASE_NOTES.md](RELEASE_NOTES.md).
 Wraps any LLM call. Paraphrased queries return the cached answer without touching the API.
 Multi-tenant math: JL projection seeded by `SHA-256(tenant_id)` gives each tenant a mathematically
 isolated address space — not a query filter, a projection matrix.
+
+**New in 0.8.0 (PrismShine coupling):** tag entries on write, selectively invalidate by tag or
+projected-vector similarity (`invalidate_tags` / `invalidate_where`), read hit metadata via
+`last_hit_meta` or an optional `on_hit` callback — without changing `get_or_call`'s return type.
+Eviction counts surface on `get_metrics()` and Prometheus.
 
 ### PrismDriver — two-node WAL-streaming DB driver
 
@@ -319,7 +324,7 @@ The Server Wrapper is an OS daemon that sits next to your database. It reads WAL
 
 ```bash
 # Install on the DB node (Linux or macOS)
-pip install "prismlib[wrapper]"
+pip install "prismlib-plus[wrapper]"
 
 # Configure and start
 prism-wrapper --config /etc/prism/wrapper.toml
@@ -344,7 +349,7 @@ The DLL Driver is an in-process library that replaces your DB connection string.
 
 ```bash
 # Install on the app node
-pip install "prismlib[fabric]"
+pip install "prismlib-plus[fabric]"
 ```
 
 #### Replace your DB connection string
@@ -654,15 +659,16 @@ For enterprise agreements: **[insightits.info@gmail.com](mailto:insightits.info@
 
 ---
 
-## Enterprise (0.7.0)
+## Enterprise
 
-Open-source core (Apache 2.0) plus an **optional enterprise layer**:
+Open-source core (Apache 2.0) plus an **optional enterprise layer** (since 0.7.0):
 
 | Feature | Module / doc |
 |---------|----------------|
 | PrismAPI provider & consumer | `prism.api` |
 | API keys, rate limits, audit | `prism.api.auth`, `prism.security` |
 | Prometheus + optional OpenTelemetry | `prism.observability` |
+| Cache eviction metrics (0.8.0) | `get_metrics().evicted_by_*`, `prism_cache_evicted_*_total` |
 | mTLS (wrapper gRPC + driver) | `prism.security.tls`, `SECURITY.md` |
 | MCP tool server | `prism.api.mcp` |
 | Helm + Docker | `deploy/helm/`, `deploy/Dockerfile.enterprise` |
@@ -698,8 +704,8 @@ pip install "prismlib-plus[enterprise]"      # PrismAPI + auth + metrics
 pip install "prismlib-plus[all,enterprise]"  # Everything
 ```
 
-**To publish 0.7.0:** see [RELEASE.md](RELEASE.md).  
-**What's new:** [RELEASE_NOTES.md](RELEASE_NOTES.md) · [CHANGELOG.md](CHANGELOG.md)
+**To publish 0.8.0:** see [RELEASE.md](RELEASE.md).  
+**What's new in 0.8.0:** [RELEASE_NOTES.md](RELEASE_NOTES.md) · [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
