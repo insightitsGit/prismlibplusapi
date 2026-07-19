@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [main, master, develop]
+    branches: [main, master, develop, "release/**"]
+    tags: ["v*"]
   pull_request:
     branches: [main, master]
 
@@ -53,9 +54,33 @@ jobs:
           cache: pip
 
       - name: Install benchmark deps
-        run: pip install -e ".[dev]" && pip install -r benchmark/requirements.txt
+        run: |
+          pip install -e ".[dev,cache]"
+          pip install -r benchmark/requirements.txt
+
+      - name: Start benchmark app
+        run: |
+          set -euo pipefail
+          PRISM_BENCHMARK_SMOKE=1 uvicorn benchmark.app.main:app \
+            --host 127.0.0.1 --port 8000 &
+          echo $! > /tmp/bench_app.pid
+          for i in $(seq 1 45); do
+            if curl -sf http://127.0.0.1:8000/health >/dev/null; then
+              echo "App healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "App failed to become healthy"
+          kill "$(cat /tmp/bench_app.pid)" || true
+          exit 1
 
       - name: Run smoke benchmark (no Azure, in-memory only)
-        run: python benchmark/load/run_benchmark.py --scenario smoke --duration 30 --no-azure
+        run: >
+          python benchmark/load/run_benchmark.py
+          --scenario smoke
+          --duration 15
+          --host http://127.0.0.1:8000
+          --no-azure
         env:
           PRISM_BENCHMARK_SMOKE: "1"
