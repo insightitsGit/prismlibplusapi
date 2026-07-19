@@ -6,6 +6,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [0.8.0] — 2026-07-18
+
+### PrismCache — PrismShine coupling (API parity with prismlib 0.5.0)
+
+- `invalidate_where(vector, threshold) -> int` — selective eviction by cosine similarity in tenant-projected space
+- `invalidate_tags(tags) -> int` — evict entries matching any tag
+- Optional `tags=` on `get_or_call` / `aget_or_call` (persisted; SQLite round-trip)
+- `HitMeta` + `last_hit_meta` on hits (`created_at`, `tags`, `llm_model`, `score`) without changing return type
+- Optional `on_hit` callback on `PrismCache.build(...)`
+- Metrics: `CacheMetrics.evicted_by_vector`, `evicted_by_tags`
+- Observability: `prism_cache_evicted_by_vector_total`, `prism_cache_evicted_by_tags_total`
+- Persist projected `query_vector` on store entries so vector invalidation works after cold restart
+
+### Fixes
+
+- README: `cache.metrics()` → `get_metrics()` (and correct metric field names)
+- Proto stub import: relative `from . import chorus_pb2` for package installs
+- Raise fabric/wrapper `protobuf` floor to `>=6.33.5` (matches checked-in gencode)
+
+---
+
 ## [0.7.0] — 2026-06-29
 
 ### Azure-validated benchmarks

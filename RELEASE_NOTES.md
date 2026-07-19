@@ -1,3 +1,29 @@
+# Release notes — prismlib-plus 0.8.0
+
+**Release date:** 2026-07-18  
+**PyPI package:** [`prismlib-plus`](https://pypi.org/project/prismlib-plus/)  
+**Predecessor:** 0.7.0
+
+## Highlights
+
+PrismCache API parity for **PrismShine** coupling (aligned with prismlib 0.5.0):
+
+- Selective invalidation: `invalidate_where(vector, threshold)`, `invalidate_tags(tags)`
+- Tagged cache writes via `get_or_call(..., tags=[...])`
+- Hit metadata: `HitMeta` / `last_hit_meta` + optional `on_hit` callback
+- Eviction metrics in `CacheMetrics` and Prometheus (`evicted_by_vector` / `evicted_by_tags`)
+- Docs fix: README uses `get_metrics()`; fabric/wrapper require `protobuf>=6.33.5`
+
+Install:
+
+```bash
+pip install "prismlib-plus==0.8.0[enterprise,cache,fabric]"
+```
+
+See `CHANGELOG.md` § 0.8.0 for the full list.
+
+---
+
 # Release notes — prismlib-plus 0.7.0
 
 **Release date:** 2026-06-29  

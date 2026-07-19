@@ -39,7 +39,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Optional, Sequence, TypeVar
 
 import numpy as np
 
@@ -69,6 +69,37 @@ class CacheError(Exception):
 
 class CacheNotStartedError(CacheError):
     """Raised when cache methods are called before start() or within context."""
+
+
+# ---------------------------------------------------------------------------
+# Hit metadata (public)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class HitMeta:
+    """
+    Metadata exposed on a cache hit without changing get_or_call's return type.
+
+    Attributes
+    ----------
+    created_at:
+        Unix epoch when the entry was written.
+    tags:
+        Subject/entity tags stored with the entry.
+    llm_model:
+        Model name recorded at write time.
+    score:
+        Similarity / constructive score of the hit.
+    packet_id:
+        Wave-packet / store key for the hit entry.
+    """
+
+    created_at: float
+    tags: tuple[str, ...]
+    llm_model: str
+    score: float
+    packet_id: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -168,12 +199,17 @@ class PrismCache:
         config: PrismCacheConfig,
         embedder: Embedder,
         store: CacheStore,
+        *,
+        on_hit: Optional[Callable[[HitMeta], None]] = None,
     ) -> None:
         self._cfg = config
         self._embedder = embedder
         self._store = store
+        self._on_hit = on_hit
         self._cost_model = get_cost_model(config.llm_model)
         self._metrics = MetricsCollector()
+        self._meta_lock = threading.RLock()
+        self._last_hit_meta: Optional[HitMeta] = None
 
         # PrismLang projector — seeds tenant isolation from config.tenant_id
         self._projector = PrismProjector(
@@ -209,6 +245,7 @@ class PrismCache:
         embedder: Optional[Embedder] = None,
         store: Optional[CacheStore] = None,
         persist_path: Optional[str] = None,
+        on_hit: Optional[Callable[[HitMeta], None]] = None,
     ) -> "PrismCache":
         """
         Convenience factory — build a PrismCache with sensible defaults.
@@ -231,6 +268,9 @@ class PrismCache:
             persist_path is provided, otherwise InMemoryStore.
         persist_path:
             If provided, use SQLiteStore at this path for response persistence.
+        on_hit:
+            Optional callback invoked synchronously on every cache hit with
+            HitMeta (created_at, tags, llm_model, score).
 
         Usage:
             cache = PrismCache.build(
@@ -263,7 +303,7 @@ class PrismCache:
             else:
                 store = InMemoryStore()
 
-        return cls(cfg, embedder, store)
+        return cls(cfg, embedder, store, on_hit=on_hit)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -304,6 +344,7 @@ class PrismCache:
         *,
         metadata: Optional[dict[str, Any]] = None,
         tokens_in_response: Optional[int] = None,
+        tags: Optional[list[str]] = None,
     ) -> T:
         """
         Return a cached response if a semantically similar query exists,
@@ -321,10 +362,14 @@ class PrismCache:
         tokens_in_response:
             If you know the token count of the LLM response, pass it here
             for accurate cost tracking. Otherwise the config default is used.
+        tags:
+            Optional subject/entity tags stored with the entry for
+            selective invalidation via invalidate_tags().
 
         Returns
         -------
         The LLM response — either from cache or freshly generated.
+        On hits, see also last_hit_meta / the optional on_hit callback.
         """
         from prism.observability.otel import trace_span
 
@@ -368,6 +413,7 @@ class PrismCache:
                         similarity_score=best_hit.constructive_score,
                         tenant_id=self._cfg.tenant_id,
                     )
+                    self._record_hit_meta(entry, best_hit.constructive_score)
 
                     logger.debug(
                         "PrismCache HIT  tenant=%s score=%.4f latency=%.2fms",
@@ -389,6 +435,7 @@ class PrismCache:
                 query_text=query,
                 response=response,
                 metadata=metadata,
+                tags=tags,
             )
 
             total_latency_ms = (time.monotonic() - t_start) * 1000
@@ -419,6 +466,7 @@ class PrismCache:
         *,
         metadata: Optional[dict[str, Any]] = None,
         tokens_in_response: Optional[int] = None,
+        tags: Optional[list[str]] = None,
     ) -> Any:
         """
         Async version of get_or_call.
@@ -464,6 +512,7 @@ class PrismCache:
                         similarity_score=hits[0].constructive_score,
                         tenant_id=self._cfg.tenant_id,
                     )
+                    self._record_hit_meta(entry, hits[0].constructive_score)
                     return entry.response
 
             # Miss — call the (possibly async) LLM function
@@ -478,6 +527,7 @@ class PrismCache:
                 query_text=query,
                 response=response,
                 metadata=metadata,
+                tags=tags,
             )
 
             self._metrics.record(
@@ -493,6 +543,105 @@ class PrismCache:
     # ------------------------------------------------------------------
     # Cache management
     # ------------------------------------------------------------------
+
+    def invalidate_where(self, vector: np.ndarray, threshold: float) -> int:
+        """
+        Evict entries whose stored (projected) query vector has cosine
+        similarity >= threshold to the given vector.
+
+        The vector must already be in the same tenant-projected space as
+        stored entries (typically via the caller's TenantSpace / projector).
+
+        Works against the in-memory wave cache and the persisted store.
+        Returns the number of entries evicted. Thread-safe.
+        """
+        target = self._unit_vector(vector)
+        if target is None:
+            return 0
+
+        to_evict: set[str] = set()
+
+        with self._resonance._lock:
+            items = list(self._resonance._store.items())
+        for pid, packet in items:
+            stored = self._unit_vector(packet.magnitude_vector)
+            if stored is None:
+                continue
+            if float(np.dot(target, stored)) >= threshold:
+                to_evict.add(pid)
+
+        for entry in self._store.items():
+            if entry.query_vector is None:
+                continue
+            stored = self._unit_vector(entry.query_vector)
+            if stored is None:
+                continue
+            if float(np.dot(target, stored)) >= threshold:
+                to_evict.add(entry.packet_id)
+
+        evicted = self._evict_ids(to_evict)
+        if evicted:
+            self._metrics.record_eviction(by_vector=evicted)
+            try:
+                from prism.observability import record_cache_evicted_by_vector
+
+                record_cache_evicted_by_vector(
+                    count=evicted, tenant_id=self._cfg.tenant_id
+                )
+            except Exception:
+                pass
+            logger.info(
+                "PrismCache.invalidate_where: evicted %d (tenant=%s, threshold=%.3f).",
+                evicted,
+                self._cfg.tenant_id,
+                threshold,
+            )
+        return evicted
+
+    def invalidate_tags(self, tags: Sequence[str]) -> int:
+        """
+        Evict entries that have ANY of the given tags.
+
+        Tags are matched exactly (case-sensitive). Returns count evicted.
+        Thread-safe.
+        """
+        wanted = {str(t) for t in tags if t}
+        if not wanted:
+            return 0
+
+        to_evict: set[str] = set()
+
+        with self._resonance._lock:
+            items = list(self._resonance._store.items())
+        for pid, packet in items:
+            meta_tags = packet.metadata.get("tags") if packet.metadata else None
+            if isinstance(meta_tags, (list, tuple, set)) and wanted.intersection(
+                str(t) for t in meta_tags
+            ):
+                to_evict.add(pid)
+
+        for entry in self._store.items():
+            if wanted.intersection(entry.tags):
+                to_evict.add(entry.packet_id)
+
+        evicted = self._evict_ids(to_evict)
+        if evicted:
+            self._metrics.record_eviction(by_tags=evicted)
+            try:
+                from prism.observability import record_cache_evicted_by_tags
+
+                record_cache_evicted_by_tags(
+                    count=evicted, tenant_id=self._cfg.tenant_id
+                )
+            except Exception:
+                pass
+            logger.info(
+                "PrismCache.invalidate_tags: evicted %d (tenant=%s, tags=%s).",
+                evicted,
+                self._cfg.tenant_id,
+                sorted(wanted),
+            )
+        return evicted
 
     def invalidate_all(self) -> int:
         """
@@ -585,6 +734,7 @@ class PrismCache:
         query_text: str,
         response: Any,
         metadata: Optional[dict[str, Any]],
+        tags: Optional[list[str]] = None,
     ) -> None:
         """
         Insert a new WavePacket into the resonance store and persist
@@ -592,6 +742,8 @@ class PrismCache:
         """
         now = time.time()
         expires_at = now + self._cfg.ttl_seconds if self._cfg.ttl_seconds > 0 else float("inf")
+        tag_list = [str(t) for t in (tags or []) if t]
+        projected = np.asarray(query_vector, dtype=np.float32).ravel().copy()
 
         # Insert into wave cache
         packet = WavePacket.from_real_vector(
@@ -602,6 +754,7 @@ class PrismCache:
                 "query_text": query_text[:200],  # truncate for memory efficiency
                 "tenant_id": self._cfg.tenant_id,
                 **(metadata or {}),
+                "tags": tag_list,
             },
         )
         # Override packet_id so it matches the envelope_id (for store lookup)
@@ -621,11 +774,59 @@ class PrismCache:
             created_at=now,
             expires_at=expires_at,
             model=self._cfg.llm_model,
+            tags=tag_list,
+            query_vector=projected,
         )
         try:
             self._store.save(entry)
         except Exception as exc:
             logger.warning("PrismCache: store save failed: %s", exc)
+
+    def _record_hit_meta(self, entry: CacheEntry, score: float) -> None:
+        meta = HitMeta(
+            created_at=entry.created_at,
+            tags=tuple(entry.tags),
+            llm_model=entry.model or self._cfg.llm_model,
+            score=float(score),
+            packet_id=entry.packet_id,
+        )
+        with self._meta_lock:
+            self._last_hit_meta = meta
+        if self._on_hit is not None:
+            try:
+                self._on_hit(meta)
+            except Exception:
+                logger.exception("PrismCache: on_hit callback failed.")
+
+    def _evict_ids(self, packet_ids: set[str]) -> int:
+        evicted = 0
+        for pid in packet_ids:
+            try:
+                self._resonance.delete(pid)
+            except Exception:
+                pass
+            try:
+                self._store.delete(pid)
+            except Exception:
+                pass
+            evicted += 1
+        return evicted
+
+    @staticmethod
+    def _unit_vector(vector: np.ndarray) -> Optional[np.ndarray]:
+        v = np.asarray(vector, dtype=np.float32).ravel()
+        if v.size == 0:
+            return None
+        norm = float(np.linalg.norm(v))
+        if norm < 1e-8:
+            return None
+        return (v / norm).astype(np.float32)
+
+    @property
+    def last_hit_meta(self) -> Optional[HitMeta]:
+        """Metadata from the most recent cache hit, or None if no hits yet."""
+        with self._meta_lock:
+            return self._last_hit_meta
 
     @property
     def tenant_id(self) -> str:

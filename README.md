@@ -1,14 +1,14 @@
 # PrismLib Plus (`prismlib-plus`)
 
 [![PyPI — prismlib (base)](https://img.shields.io/badge/pypi-prismlib_0.4.0-blue.svg)](https://pypi.org/project/prismlib/)
-[![Version](https://img.shields.io/badge/version-0.7.0-green.svg)](RELEASE_NOTES.md)
+[![Version](https://img.shields.io/badge/version-0.8.0-green.svg)](RELEASE_NOTES.md)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://pypi.org/project/prismlib/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub](https://img.shields.io/badge/github-insightitsGit%2Fprismlib-black?logo=github)](https://github.com/insightitsGit/prismlib)
 
 **The in-process intelligence stack for LLM applications** — semantic cache, WAL-streamed vector replica, multi-node cluster mesh, and a vector-native agent API with enterprise auth and observability.
 
-> **Release notes:** [RELEASE_NOTES.md](RELEASE_NOTES.md) · **PyPI:** [`prismlib` 0.4.0](https://pypi.org/project/prismlib/) (base) → **`prismlib-plus` 0.7.0** (this repo, full stack)
+> **Release notes:** [RELEASE_NOTES.md](RELEASE_NOTES.md) · **PyPI:** [`prismlib` 0.4.0](https://pypi.org/project/prismlib/) (base) → **`prismlib-plus` 0.8.0** (this repo, full stack)
 
 ---
 
@@ -18,7 +18,7 @@
 
 Full in-process intelligence stack on top of prismlib: cache, WAL vector replica, cluster mesh, and vector-native agent API with optional enterprise HTTP.
 
-**Package:** `prismlib-plus` 0.7.0
+**Package:** `prismlib-plus` 0.8.0
 
 ## Who is it for?
 
@@ -273,11 +273,38 @@ from prism.cache import PrismCache
 cache = PrismCache.build(tenant_id="finance", llm_model="gpt-4o")
 
 # After processing queries...
-metrics = cache.metrics()
+metrics = cache.get_metrics()
 print(f"Hit rate:          {metrics.hit_rate:.0%}")
-print(f"Tokens saved:      {metrics.tokens_saved:,}")
-print(f"Cost saved today:  ${metrics.cost_saved_usd:.2f}")
-print(f"Projected monthly: ${metrics.cost_saved_usd * 30:.0f}")
+print(f"Tokens saved:      {metrics.total_tokens_saved:,}")
+print(f"Cost saved today:  ${metrics.total_cost_saved_usd:.2f}")
+print(f"Projected monthly: ${metrics.projected_monthly_savings_usd:.0f}")
+print(f"Evicted (vector):  {metrics.evicted_by_vector}")
+print(f"Evicted (tags):    {metrics.evicted_by_tags}")
+```
+
+#### Selective invalidation (PrismShine / corrections)
+
+```python
+from prism.cache import PrismCache, HitMeta
+
+def on_hit(meta: HitMeta) -> None:
+    # Feed hit metadata into an evidence bundle without changing get_or_call's return type
+    print(meta.created_at, meta.tags, meta.llm_model, meta.score)
+
+cache = PrismCache.build(tenant_id="acme", llm_model="gpt-4o", on_hit=on_hit)
+
+answer = cache.get_or_call(
+    query="Who is Person A?",
+    call_fn=lambda: llm("Who is Person A?"),
+    tags=["person_a", "family"],
+)
+
+# After a fact correction: purge related cached answers
+cache.invalidate_tags(["person_a"])
+# Or purge by tenant-projected vector similarity:
+# cache.invalidate_where(projected_vector, threshold=0.90)
+
+meta = cache.last_hit_meta  # HitMeta | None from the most recent hit
 ```
 
 ---

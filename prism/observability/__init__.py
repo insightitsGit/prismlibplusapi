@@ -83,6 +83,26 @@ def record_cache_miss(*, tenant_id: str = "", latency_ms: float = 0.0) -> None:
     _GLOBAL.gauge("prism_cache_last_miss_latency_ms", latency_ms)
 
 
+def record_cache_evicted_by_vector(*, count: int = 1, tenant_id: str = "") -> None:
+    if count <= 0:
+        return
+    _GLOBAL.counter(
+        "prism_cache_evicted_by_vector_total",
+        float(count),
+        help_text="PrismCache entries evicted by vector similarity",
+    )
+
+
+def record_cache_evicted_by_tags(*, count: int = 1, tenant_id: str = "") -> None:
+    if count <= 0:
+        return
+    _GLOBAL.counter(
+        "prism_cache_evicted_by_tags_total",
+        float(count),
+        help_text="PrismCache entries evicted by tag match",
+    )
+
+
 def record_driver_index(*, size: int, rows_received: int, rows_deleted: int) -> None:
     _GLOBAL.gauge("prism_driver_index_size", float(size))
     _GLOBAL.gauge("prism_driver_rows_received_total", float(rows_received))

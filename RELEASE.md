@@ -7,7 +7,7 @@
 | **`prismlib`** | [0.4.0](https://pypi.org/project/prismlib/) | Base library (PrismLib repo) |
 | **`prismlib-plus`** | *not published yet* | Superset + PrismAPI + enterprise (this repo) |
 
-**Recommended:** publish this repo as **`prismlib-plus` 0.7.0** (new package, coexists with `prismlib`).
+**Recommended:** publish this repo as **`prismlib-plus` 0.8.0** (coexists with `prismlib`).
 
 **Alternative:** rename `name = "prismlib"` in `pyproject.toml` and publish **0.5.0** as the next version of the existing package (document breaking/extra deps in README).
 
@@ -39,7 +39,7 @@ python -m build
 twine check dist/*
 
 # Test install from wheel
-pip install dist/prismlib_plus-0.7.0-py3-none-any.whl
+pip install dist/prismlib_plus-0.8.0-py3-none-any.whl
 
 # Upload (requires PyPI token)
 twine upload dist/*
@@ -70,15 +70,15 @@ export TWINE_PASSWORD=pypi-AgEIcHlwaS5vcmcC...
 ## Post-publish
 
 ```bash
-pip install "prismlib-plus==0.7.0[enterprise,cache,fabric]"
+pip install "prismlib-plus==0.8.0[enterprise,cache,fabric]"
 python examples/enterprise_golden_path.py
 ```
 
 Tag git release:
 
 ```bash
-git tag v0.7.0
-git push origin v0.7.0
+git tag v0.8.0
+git push origin v0.8.0
 ```
 
-Create GitHub release notes from `CHANGELOG.md` § 0.7.0.
+Create GitHub release notes from `CHANGELOG.md` § 0.8.0.
