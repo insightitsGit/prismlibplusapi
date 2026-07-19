@@ -112,9 +112,9 @@ def run_locust(
         "--only-summary",
     ]
 
-    if no_azure:
-        # Use only WarmUser and MixedUser in smoke mode
-        cmd += ["--class-picker"]
+    # Headless CI/local smoke: do not use --class-picker (interactive TUI).
+    # All HttpUser classes in locustfile.py run with their configured weights.
+    _ = no_azure
 
     console.print(f"[cyan]Running Locust: {users} users × {duration}s ...[/cyan]")
     proc = subprocess.run(cmd, capture_output=True, text=True)

@@ -18,7 +18,7 @@ Quick start:
     cache.print_metrics()
 """
 
-from prism.cache.cache import PrismCache, PrismCacheConfig, CacheError
+from prism.cache.cache import PrismCache, PrismCacheConfig, CacheError, HitMeta
 from prism.cache.embedder import (
     Embedder,
     SentenceTransformerEmbedder,
@@ -35,6 +35,7 @@ __all__ = [
     "PrismCache",
     "PrismCacheConfig",
     "CacheError",
+    "HitMeta",
     # Embedders
     "Embedder",
     "SentenceTransformerEmbedder",

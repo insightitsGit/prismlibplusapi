@@ -15,6 +15,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from concurrent.futures import ThreadPoolExecutor
+
 from prism.cache import (
     PrismCache,
     PrismCacheConfig,
@@ -22,6 +24,7 @@ from prism.cache import (
     InMemoryStore,
     SQLiteStore,
     CacheMetrics,
+    HitMeta,
 )
 from prism.cache.cache import CacheError
 from prism.cache.embedder import EmbedderNotInstalledError
@@ -448,3 +451,189 @@ class TestPrismCache:
         # but this tests the store independently
         assert store.count() == 1
         assert store.total_hits() >= 0  # just verify it runs
+
+
+# ---------------------------------------------------------------------------
+# Selective invalidation + hit metadata (0.8.0 / PrismShine)
+# ---------------------------------------------------------------------------
+
+
+class TestSelectiveInvalidation:
+    def _cache(self, embedder: HashEmbedder, **kwargs: Any) -> PrismCache:
+        cfg = PrismCacheConfig(
+            tenant_id=kwargs.pop("tenant_id", "inv-tenant"),
+            similarity_threshold=0.99,
+            ttl_seconds=3600,
+            llm_model="gpt-4o-mini",
+        )
+        store = kwargs.pop("store", InMemoryStore())
+        return PrismCache(cfg, embedder, store, **kwargs)
+
+    def test_invalidate_where_evicts_at_threshold(self, embedder: HashEmbedder) -> None:
+        cache = self._cache(embedder)
+        cache.get_or_call("vector eviction query", lambda: "ans")
+        assert cache.cache_size == 1
+
+        entries = cache._store.items()
+        assert len(entries) == 1
+        vec = entries[0].query_vector
+        assert vec is not None
+
+        # Exact match → cosine 1.0 ≥ 0.99
+        n = cache.invalidate_where(vec, threshold=0.99)
+        assert n == 1
+        assert cache.cache_size == 0
+        assert cache.get_metrics().evicted_by_vector == 1
+
+    def test_invalidate_where_miss_below_threshold(self, embedder: HashEmbedder) -> None:
+        cache = self._cache(embedder)
+        cache.get_or_call("keep this entry", lambda: "ans")
+        entries = cache._store.items()
+        vec = entries[0].query_vector
+        assert vec is not None
+
+        # Orthogonal-ish random vector should not match at high threshold
+        rng = np.random.default_rng(42)
+        other = rng.standard_normal(vec.shape[0]).astype(np.float32)
+        n = cache.invalidate_where(other, threshold=0.99)
+        assert n == 0
+        assert cache.cache_size == 1
+        assert cache.get_metrics().evicted_by_vector == 0
+
+    def test_invalidate_tags_any_match(self, embedder: HashEmbedder) -> None:
+        cache = self._cache(embedder)
+        cache.get_or_call("q1", lambda: "a1", tags=["person_a", "family"])
+        cache.get_or_call("q2", lambda: "a2", tags=["person_b"])
+        cache.get_or_call("q3", lambda: "a3", tags=["other"])
+
+        n = cache.invalidate_tags(["person_a", "person_b"])
+        assert n == 2
+        assert cache.cache_size == 1
+        assert cache.get_metrics().evicted_by_tags == 2
+
+        # Remaining entry still serves
+        calls = {"n": 0}
+        cache.get_or_call("q3", lambda: (calls.update(n=1) or "fresh"))
+        assert calls["n"] == 0
+
+    def test_tags_and_created_at_survive_sqlite_roundtrip(
+        self, embedder: HashEmbedder, tmp_path: Any
+    ) -> None:
+        db = str(tmp_path / "cache.db")
+        store = SQLiteStore(db)
+        cache = self._cache(embedder, store=store)
+        before = time.time()
+        cache.get_or_call(
+            "persist tags query",
+            lambda: "tagged answer",
+            tags=["person_a", "family"],
+        )
+        after = time.time()
+
+        entries = store.items()
+        assert len(entries) == 1
+        e = entries[0]
+        assert e.tags == ["person_a", "family"]
+        assert before <= e.created_at <= after
+        assert e.query_vector is not None
+        assert e.query_vector.shape == (64,)
+
+        # Re-open DB — migration path + round-trip
+        store2 = SQLiteStore(db)
+        entries2 = store2.items()
+        assert len(entries2) == 1
+        assert entries2[0].tags == ["person_a", "family"]
+        assert entries2[0].created_at == e.created_at
+        np.testing.assert_allclose(entries2[0].query_vector, e.query_vector, atol=1e-5)
+
+        # Vector invalidation works from persisted store alone (cold resonance)
+        cold = self._cache(embedder, store=store2, tenant_id="inv-tenant-cold")
+        n = cold.invalidate_where(e.query_vector, threshold=0.99)
+        assert n == 1
+        assert store2.count() == 0
+
+    def test_last_hit_meta_and_on_hit_callback(self, embedder: HashEmbedder) -> None:
+        seen: list[HitMeta] = []
+        cache = PrismCache.build(
+            tenant_id="hit-meta",
+            embedder=embedder,
+            similarity_threshold=0.99,
+            llm_model="gpt-4o-mini",
+            on_hit=seen.append,
+        )
+        assert cache.last_hit_meta is None
+
+        q = "hit meta question"
+        cache.get_or_call(q, lambda: "answer", tags=["t1"])
+        assert cache.last_hit_meta is None  # miss — no meta yet
+        assert seen == []
+
+        cache.get_or_call(q, lambda: "should not call")
+        assert cache.last_hit_meta is not None
+        meta = cache.last_hit_meta
+        assert isinstance(meta, HitMeta)
+        assert meta.tags == ("t1",)
+        assert meta.llm_model == "gpt-4o-mini"
+        assert meta.score >= 0.99
+        assert meta.created_at > 0
+        assert len(seen) == 1
+        assert seen[0] == meta
+
+    def test_get_or_call_return_type_unchanged(self, embedder: HashEmbedder) -> None:
+        cache = self._cache(embedder)
+        result = cache.get_or_call("plain", lambda: {"k": 1}, tags=["x"])
+        assert result == {"k": 1}
+        result2 = cache.get_or_call("plain", lambda: {"k": 2})
+        assert result2 == {"k": 1}  # still returns T, not a tuple/wrapper
+
+    def test_concurrent_invalidate_during_get_or_call(
+        self, embedder: HashEmbedder
+    ) -> None:
+        cache = self._cache(embedder)
+        for i in range(20):
+            cache.get_or_call(f"concurrent q {i}", lambda i=i: f"a{i}", tags=["batch"])
+
+        errors: list[BaseException] = []
+
+        def reader() -> None:
+            try:
+                for i in range(50):
+                    cache.get_or_call(
+                        f"concurrent q {i % 20}",
+                        lambda: "fresh",
+                    )
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        def evictor() -> None:
+            try:
+                for _ in range(10):
+                    cache.invalidate_tags(["batch"])
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futs = [pool.submit(reader) for _ in range(2)]
+            futs.append(pool.submit(evictor))
+            for f in futs:
+                f.result()
+
+        assert errors == []
+        # Metrics remain readable
+        m = cache.get_metrics()
+        assert m.evicted_by_tags >= 0
+        assert m.total_queries >= 0
+
+    def test_observability_eviction_counters(self, embedder: HashEmbedder) -> None:
+        from prism.observability import get_registry
+
+        cache = self._cache(embedder)
+        cache.get_or_call("obs q", lambda: "a", tags=["obs"])
+        cache.invalidate_tags(["obs"])
+        cache.get_or_call("obs q2", lambda: "a2")
+        entries = cache._store.items()
+        cache.invalidate_where(entries[0].query_vector, threshold=0.5)
+
+        names = {m.name for m in get_registry().snapshot()}
+        assert "prism_cache_evicted_by_tags_total" in names
+        assert "prism_cache_evicted_by_vector_total" in names

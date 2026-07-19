@@ -117,6 +117,8 @@ class MetricsCollector:
         self._total_hits = 0
         self._total_tokens_saved = 0
         self._total_cost_saved = 0.0
+        self._evicted_by_vector = 0
+        self._evicted_by_tags = 0
         self._started_at = time.time()
 
     def record(
@@ -147,6 +149,12 @@ class MetricsCollector:
                 self._total_tokens_saved += tokens_saved
                 self._total_cost_saved += cost_saved_usd
 
+    def record_eviction(self, *, by_vector: int = 0, by_tags: int = 0) -> None:
+        """Record selective invalidation eviction counts. Thread-safe."""
+        with self._lock:
+            self._evicted_by_vector += max(0, by_vector)
+            self._evicted_by_tags += max(0, by_tags)
+
     def snapshot(self) -> "CacheMetrics":
         """Return a point-in-time metrics snapshot. Thread-safe."""
         with self._lock:
@@ -155,6 +163,8 @@ class MetricsCollector:
             total_h = self._total_hits
             total_tokens = self._total_tokens_saved
             total_cost = self._total_cost_saved
+            evicted_by_vector = self._evicted_by_vector
+            evicted_by_tags = self._evicted_by_tags
 
         hit_events = [e for e in events if e.was_hit]
         miss_events = [e for e in events if not e.was_hit]
@@ -182,6 +192,8 @@ class MetricsCollector:
             hits_last_hour=recent_hits,
             cost_saved_last_hour_usd=round(recent_cost, 6),
             uptime_seconds=time.time() - self._started_at,
+            evicted_by_vector=evicted_by_vector,
+            evicted_by_tags=evicted_by_tags,
         )
 
 
@@ -211,6 +223,8 @@ class CacheMetrics:
     hits_last_hour:         Cache hits in the rolling last 60 minutes.
     cost_saved_last_hour_usd: USD saved in the rolling last 60 minutes.
     uptime_seconds:         Time since the cache was initialised.
+    evicted_by_vector:      Entries removed via invalidate_where().
+    evicted_by_tags:        Entries removed via invalidate_tags().
     """
 
     total_queries: int
@@ -224,6 +238,8 @@ class CacheMetrics:
     hits_last_hour: int
     cost_saved_last_hour_usd: float
     uptime_seconds: float
+    evicted_by_vector: int = 0
+    evicted_by_tags: int = 0
 
     @property
     def hit_rate(self) -> float:
@@ -268,6 +284,8 @@ class CacheMetrics:
             f"  Cost saved total: ${self.total_cost_saved_usd:.4f}",
             f"  Cost saved/hour:  ${self.cost_saved_last_hour_usd:.4f}",
             f"  Proj. monthly:    ${self.projected_monthly_savings_usd:.2f}",
+            f"  Evicted (vector): {self.evicted_by_vector:,}",
+            f"  Evicted (tags):   {self.evicted_by_tags:,}",
             f"  Uptime:           {self.uptime_seconds / 3600:.1f}h",
         ]
         return "\n".join(lines)

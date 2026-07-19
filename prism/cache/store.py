@@ -31,6 +31,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,6 +65,8 @@ class CacheEntry:
     hit_count:      Number of times this entry has been served from cache.
     tokens_saved:   Estimated tokens saved by cache hits (populated by caller).
     model:          LLM model name that produced this response.
+    tags:           Optional subject/entity tags for selective invalidation.
+    query_vector:   Tenant-projected query vector (for vector invalidation).
     """
 
     packet_id: str
@@ -73,11 +77,16 @@ class CacheEntry:
     hit_count: int = 0
     tokens_saved: int = 0
     model: str = ""
+    tags: list[str] = field(default_factory=list)
+    query_vector: Optional[np.ndarray] = None
 
     def is_expired(self) -> bool:
         return time.time() > self.expires_at
 
     def to_dict(self) -> dict:
+        vec = None
+        if self.query_vector is not None:
+            vec = np.asarray(self.query_vector, dtype=np.float32).ravel().tolist()
         return {
             "packet_id": self.packet_id,
             "query_text": self.query_text,
@@ -87,10 +96,16 @@ class CacheEntry:
             "hit_count": self.hit_count,
             "tokens_saved": self.tokens_saved,
             "model": self.model,
+            "tags": list(self.tags),
+            "query_vector": vec,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "CacheEntry":
+        raw_vec = d.get("query_vector")
+        query_vector = None
+        if raw_vec is not None:
+            query_vector = np.asarray(raw_vec, dtype=np.float32).ravel()
         return cls(
             packet_id=d["packet_id"],
             query_text=d["query_text"],
@@ -100,6 +115,8 @@ class CacheEntry:
             hit_count=d.get("hit_count", 0),
             tokens_saved=d.get("tokens_saved", 0),
             model=d.get("model", ""),
+            tags=list(d.get("tags") or []),
+            query_vector=query_vector,
         )
 
 
@@ -143,6 +160,14 @@ class CacheStore(abc.ABC):
     @abc.abstractmethod
     def total_tokens_saved(self) -> int:
         """Return the sum of tokens_saved across all entries."""
+
+    @abc.abstractmethod
+    def items(self) -> list[CacheEntry]:
+        """
+        Return all non-expired entries without incrementing hit counts.
+
+        Used for selective invalidation (tags / vector similarity).
+        """
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +231,10 @@ class InMemoryStore(CacheStore):
         with self._lock:
             return sum(e.tokens_saved for e in self._store.values())
 
+    def items(self) -> list[CacheEntry]:
+        with self._lock:
+            return [e for e in self._store.values() if not e.is_expired()]
+
     def _evict_oldest(self) -> None:
         """Evict the 10% oldest entries when the store is full."""
         n_evict = max(1, self._max_size // 10)
@@ -246,7 +275,9 @@ class SQLiteStore(CacheStore):
         expires_at   REAL NOT NULL,
         hit_count    INTEGER NOT NULL DEFAULT 0,
         tokens_saved INTEGER NOT NULL DEFAULT 0,
-        model        TEXT NOT NULL DEFAULT ''
+        model        TEXT NOT NULL DEFAULT '',
+        tags_json    TEXT NOT NULL DEFAULT '[]',
+        query_vector_json TEXT NOT NULL DEFAULT '[]'
     );
     CREATE INDEX IF NOT EXISTS idx_expires_at ON cache_entries (expires_at);
     """
@@ -266,23 +297,59 @@ class SQLiteStore(CacheStore):
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.executescript(self._SCHEMA)
+        self._migrate(conn)
         conn.commit()
         return conn
 
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """Add columns introduced after the original schema."""
+        cur = conn.execute("PRAGMA table_info(cache_entries)")
+        cols = {row[1] for row in cur.fetchall()}
+        if "tags_json" not in cols:
+            conn.execute(
+                "ALTER TABLE cache_entries ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'"
+            )
+        if "query_vector_json" not in cols:
+            conn.execute(
+                "ALTER TABLE cache_entries "
+                "ADD COLUMN query_vector_json TEXT NOT NULL DEFAULT '[]'"
+            )
+
+    @staticmethod
+    def _encode_vector(vector: Optional[np.ndarray]) -> str:
+        if vector is None:
+            return "[]"
+        return json.dumps(np.asarray(vector, dtype=np.float32).ravel().tolist())
+
+    @staticmethod
+    def _decode_vector(raw: Optional[str]) -> Optional[np.ndarray]:
+        if not raw:
+            return None
+        data = json.loads(raw)
+        if not data:
+            return None
+        return np.asarray(data, dtype=np.float32).ravel()
+
     def save(self, entry: CacheEntry) -> None:
         response_json = json.dumps(entry.response, ensure_ascii=False)
+        tags_json = json.dumps(list(entry.tags), ensure_ascii=False)
+        query_vector_json = self._encode_vector(entry.query_vector)
         with self._lock:
             self._conn.execute(
                 """
                 INSERT INTO cache_entries
                     (packet_id, query_text, response_json, created_at,
-                     expires_at, hit_count, tokens_saved, model)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     expires_at, hit_count, tokens_saved, model,
+                     tags_json, query_vector_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(packet_id) DO UPDATE SET
-                    response_json = excluded.response_json,
-                    expires_at    = excluded.expires_at,
-                    hit_count     = excluded.hit_count,
-                    tokens_saved  = excluded.tokens_saved
+                    response_json     = excluded.response_json,
+                    expires_at        = excluded.expires_at,
+                    hit_count         = excluded.hit_count,
+                    tokens_saved      = excluded.tokens_saved,
+                    model             = excluded.model,
+                    tags_json         = excluded.tags_json,
+                    query_vector_json = excluded.query_vector_json
                 """,
                 (
                     entry.packet_id,
@@ -293,6 +360,8 @@ class SQLiteStore(CacheStore):
                     entry.hit_count,
                     entry.tokens_saved,
                     entry.model,
+                    tags_json,
+                    query_vector_json,
                 ),
             )
             self._conn.commit()
@@ -333,6 +402,8 @@ class SQLiteStore(CacheStore):
             hit_count=data["hit_count"] + 1,
             tokens_saved=data["tokens_saved"],
             model=data["model"],
+            tags=list(json.loads(data.get("tags_json") or "[]")),
+            query_vector=self._decode_vector(data.get("query_vector_json")),
         )
 
     def delete(self, packet_id: str) -> None:
@@ -364,6 +435,33 @@ class SQLiteStore(CacheStore):
         with self._lock:
             cur = self._conn.execute("SELECT COALESCE(SUM(tokens_saved), 0) FROM cache_entries")
             return int(cur.fetchone()[0])
+
+    def items(self) -> list[CacheEntry]:
+        now = time.time()
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM cache_entries WHERE expires_at >= ?", (now,)
+            )
+            cols = [d[0] for d in cur.description]
+            rows = cur.fetchall()
+        out: list[CacheEntry] = []
+        for row in rows:
+            data = dict(zip(cols, row))
+            out.append(
+                CacheEntry(
+                    packet_id=data["packet_id"],
+                    query_text=data["query_text"],
+                    response=json.loads(data["response_json"]),
+                    created_at=data["created_at"],
+                    expires_at=data["expires_at"],
+                    hit_count=data["hit_count"],
+                    tokens_saved=data["tokens_saved"],
+                    model=data["model"],
+                    tags=list(json.loads(data.get("tags_json") or "[]")),
+                    query_vector=self._decode_vector(data.get("query_vector_json")),
+                )
+            )
+        return out
 
     def close(self) -> None:
         with self._lock:
