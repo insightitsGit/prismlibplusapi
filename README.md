@@ -440,7 +440,7 @@ $results = $driver->query($embedding, topK: 5, threshold: 0.85);
 │  PostgreSQL / MySQL / CockroachDB / TiDB                       │
 │       │ WAL / binlog / changefeed                              │
 │  ┌────▼───────────────────────────────────────────────────┐    │
-│  │  prism-wrapper  (pip install "prismlib[wrapper]")      │    │
+│  │  prism-wrapper  (pip install "prismlib-plus[wrapper]") │    │
 │  │  RowVectorizer → TensorCipher (V_enc = V @ K)         │    │
 │  │  → HMAC-SHA256 watermark → CHORUSPublisher            │    │
 │  └────────────────────────┬───────────────────────────────┘    │
@@ -448,7 +448,7 @@ $results = $driver->query($embedding, topK: 5, threshold: 0.85);
                             │  CHORUS Fabric (gRPC, encrypted float32)
 ┌─ App Node — GREEN ────────┼────────────────────────────────────┐
 │  ┌────────────────────────▼──────────────────────────────┐     │
-│  │  PrismDriver DLL  (pip install "prismlib[fabric]")    │     │
+│  │  PrismDriver DLL  (pip install "prismlib-plus[fabric]")│     │
 │  │  Subscribe loop → decrypt → PrismResonance index      │     │
 │  └──────────────────────────┬────────────────────────────┘     │
 │                             │ sub-ms query                     │
@@ -570,7 +570,7 @@ CHORUS Fabric is the same protocol used in the CHORUS M2M system — InsightIts'
 
 ## PrismLib Micro — Cluster & RAG Layer
 
-PrismLib Micro is the cluster layer built into `prismlib[fabric]`. It adds three
+PrismLib Micro is the cluster layer built into `prismlib-plus[fabric]`. It adds three
 capabilities on top of the single-node stack — no extra install, no extra infra.
 
 ### What's included
