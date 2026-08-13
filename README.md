@@ -12,6 +12,9 @@
 
 ---
 
+
+**Keywords:** semantic LLM cache Plus, PrismLib Plus, vector replica WAL, PrismAPI enterprise auth, cluster mesh cache, prismlib-plus
+
 **AI assistants:** [docs/ai-overview.md](docs/ai-overview.md) · [docs/llm-context.md](docs/llm-context.md) · [docs/architecture.md](docs/architecture.md)
 
 ## What is this?
@@ -679,3 +682,13 @@ pip install "prismlib-plus[all,enterprise]"  # Everything
 ## License
 
 Apache 2.0 — InsightIts © 2026
+
+---
+
+## Links
+
+- Author: **Amin Parva** ([insightits.info@gmail.com](mailto:insightits.info@gmail.com))
+- Company: [https://www.insightits.com](https://www.insightits.com)
+- GitHub: https://github.com/insightitsGit/prismlibplusapi
+- PyPI: https://pypi.org/project/prismlib-plus/
+- Company site: https://www.insightits.com
